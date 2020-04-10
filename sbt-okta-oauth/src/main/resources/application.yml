@@ -1,0 +1,6 @@
+okta:
+  oauth2:
+    client-id: 0oa3yi9xkgaa9XQ8T4x6
+    client-secret: wNnKJRsd1478SqDmjmbt8x01wwVRU5ZBvhjWCPGc
+    issuer: https://dev-671903.okta.com/oauth2/default
+spring:  main:    allow-bean-definition-overriding: true

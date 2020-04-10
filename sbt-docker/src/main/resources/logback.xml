@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration scan="true" scanPeriod="30 seconds">
+
+	<property name="logFile" value="logs/docker-service.log" />
+	<!--<property name="logFile-WS" value="logs/nyms-service-ws.log" />
+	 <property name="LOG_PATTERN" value="%date{ISO8601} [%thread] %-5level 
+		[traceId=%X{X-B3-TraceId:-},spanId=%X{X-B3-SpanId:-}] %logger{36} - %msg%n" 
+		/> -->
+
+	<property name="LOG_PATTERN" value="%d{'HH:mm:ss,SS'} [%X{mdcData}%5p] %msg%n" />
+
+	<!-- Enables JMX to interact with the logback engine -->
+	<jmxConfigurator />
+
+	<!-- Does not include SOAP/REST messages in log. -->
+	<appender name="logFileAppender"
+		class="ch.qos.logback.core.rolling.RollingFileAppender">
+		<file>${logFile}</file>
+
+		<rollingPolicy
+			class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+			<fileNamePattern>${logFile}.%d{yyyy-MM-dd}.gz</fileNamePattern>
+
+			<!-- keep 30 days' worth of history -->
+			<maxHistory>30</maxHistory>
+		</rollingPolicy>
+
+		<encoder>
+			<pattern>${LOG_PATTERN}</pattern>
+			<charset>utf8</charset>
+		</encoder>
+	</appender>	 
+
+	<appender name="stdout"
+		class="ch.qos.logback.core.ConsoleAppender">
+		<encoder>
+			<pattern>${LOG_PATTERN}</pattern>
+			<charset>utf8</charset>
+		</encoder>
+	</appender>
+
+	<logger name="com.serole.mims" level="${agent-log-level:-INFO}" />
+
+	<!-- Allows the logging level to be set from the command line with -Droot-level -->
+	<root level="${root-log-level:-INFO}">
+		<!-- <root level="${root-log-level:-DEBUG}"> -->
+		<!-- Note this is overridden on servers to use logFileAppender instead 
+			of stdout -->
+		<appender-ref ref="stdout" />
+		<appender-ref ref="logFileAppender" />
+	</root>
+</configuration>
