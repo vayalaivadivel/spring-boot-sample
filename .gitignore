@@ -1,0 +1,109 @@
+###############################################
+#  Global ignores
+###############################################
+*.class
+*.log
+*.ctxt
+*.swp
+*.DS_Store
+*.idea/
+*.iml
+.vscode/
+.env
+node_modules/
+target/
+dist/
+build/
+out/
+*.tmp
+*.bak
+*.swp
+Thumbs.db
+
+###############################################
+#  Java / Spring Boot
+###############################################
+# Maven
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+gradle-app.setting
+gradle-app.properties
+.gradle/
+build/
+.gradle/
+!gradle/wrapper/gradle-wrapper.properties
+
+# Spring Boot specific
+*.jar
+*.war
+*.ear
+*.db
+*.h2.db
+*.mv.db
+*.log
+
+# IntelliJ IDEA / Eclipse
+.idea/
+*.iml
+*.ipr
+*.iws
+.classpath
+.project
+.settings/
+bin/
+.mvn/
+.mvn/wrapper/maven-wrapper.jar
+.mvn/wrapper/maven-wrapper.properties
+
+###############################################
+#  Angular / Frontend
+###############################################
+# Angular build output
+dist/
+.angular/
+.angular/cache/
+.angular-cli.json
+
+# Dependencies
+node_modules/
+package-lock.json
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-lock.yaml
+
+# Environment files
+/src/environments/environment*.ts
+
+# Editor settings
+.vscode/
+.idea/
+
+###############################################
+# OS / Miscellaneous
+###############################################
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+###############################################
+# Logs
+###############################################
+*.log
+logs/
+*.pid
+*.seed
+*.pid.lock
+
