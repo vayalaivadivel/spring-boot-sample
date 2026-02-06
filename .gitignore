@@ -107,3 +107,4 @@ logs/
 *.seed
 *.pid.lock
 
+/.metadata/
