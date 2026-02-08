@@ -1,0 +1,25 @@
+spring.application.name: orders
+spring.kafka:
+  bootstrap-servers: b-1.practicemsk.e7g2pn.c2.kafka.ap-south-1.amazonaws.com:9094,b-2.practicemsk.e7g2pn.c2.kafka.ap-south-1.amazonaws.com:9094,b-3.practicemsk.e7g2pn.c2.kafka.ap-south-1.amazonaws.com:9094
+  properties:
+    security:
+      protocol=SSL:
+  producer:
+    key-serializer: org.apache.kafka.common.serialization.LongSerializer
+    value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+  streams:
+    properties:
+      default.key.serde: org.apache.kafka.common.serialization.Serdes$LongSerde
+      default.value.serde: org.springframework.kafka.support.serializer.JsonSerde
+      spring.json.trusted.packages: "*"
+    state-dir: /tmp/kafka-streams/
+
+management:
+  health:
+    binders:
+      enabled: true
+  endpoint:
+    health:
+      show-details: ALWAYS
+
+logging.pattern.console: "%clr(%d{HH:mm:ss.SSS}){blue} %clr(---){faint} %clr([%15.15t]){yellow} %clr(:){red} %clr(%m){faint}%n"

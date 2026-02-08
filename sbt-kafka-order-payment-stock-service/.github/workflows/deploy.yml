@@ -1,0 +1,55 @@
+name: Deploy Multiple Microservices
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - "order-service/**"
+#      - "payment-service/**"
+#      - "user-service/**"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        service:
+          - order-service
+#          - payment-service
+#          - user-service
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Build service
+        run: |
+          cd ${{ matrix.service }}
+          mvn clean package -DskipTests
+
+      - name: Copy JAR to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "${{ matrix.service }}/target/*.jar"
+          target: "/opt/microservices/${{ matrix.service }}"
+
+      - name: Restart service on EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            mv /opt/microservices/${{ matrix.service }}/target/*.jar \
+               /opt/microservices/${{ matrix.service }}/app.jar
+            sudo systemctl restart ${{ matrix.service }}
