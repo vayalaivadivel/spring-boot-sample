@@ -1,12 +1,13 @@
-name: Deploy Multiple Microservices
+name: Deploy Multiple Microservices to EC2
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - master
     paths:
-      - "../../.."
-#      - "payment-service/**"
-#      - "user-service/**"
+      - "sbt-kafka-order-payment-stock-service/order-service/**"
+#      - "sbt-kafka-order-payment-stock-service/payment-service/**"
+#      - "sbt-kafka-order-payment-stock-service/stock-service/**"
 
 jobs:
   deploy:
@@ -17,7 +18,11 @@ jobs:
         service:
           - order-service
 #          - payment-service
-#          - user-service
+#          - stock-service
+
+    defaults:
+      run:
+        working-directory: sbt-kafka-order-payment-stock-service
 
     steps:
       - name: Checkout source
@@ -40,7 +45,7 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: "${{ matrix.service }}/target/*.jar"
+          source: "sbt-kafka-order-payment-stock-service/${{ matrix.service }}/target/*.jar"
           target: "/opt/microservices/${{ matrix.service }}"
 
       - name: Restart service on EC2
@@ -50,6 +55,6 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            mv /opt/microservices/${{ matrix.service }}/target/*.jar \
-               /opt/microservices/${{ matrix.service }}/app.jar
+            sudo mv /opt/microservices/${{ matrix.service }}/target/*.jar \
+                    /opt/microservices/${{ matrix.service }}/app.jar
             sudo systemctl restart ${{ matrix.service }}
