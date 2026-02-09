@@ -51,6 +51,13 @@ jobs:
           cd sbt-kafka-order-payment-stock-service || exit 1
           mvn clean install -DskipTests
 
+      # ✅ Add EC2 host to known_hosts BEFORE connecting
+      - name: Add EC2 to known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
       # 5️⃣ Optional: deploy service
       - name: Deploy order-service to EC2
         env:
