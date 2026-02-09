@@ -52,11 +52,36 @@ jobs:
           mvn clean install -DskipTests
 
       # 5️⃣ Optional: deploy service
-      - name: Deploy service
+      - name: Deploy order-service to EC2
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_KEY: ${{ secrets.EC2_KEY }}  # private key stored as GitHub Secret
         run: |
-          echo "Deploying ${{ matrix.service }}..."
-          # Insert your EC2 deployment commands here
-          
+          echo "Deploying order-service..."
+
+          # Write private key to temporary file
+          echo "$EC2_KEY" > key.pem
+          chmod 600 key.pem
+
+          # Copy JAR to EC2
+          scp -i key.pem sbt-kafka-order-payment-stock-service/order-service/target/order-service-1.0-SNAPSHOT.jar $EC2_USER@$EC2_HOST:/home/$EC2_USER/
+
+          # SSH into EC2 and restart service
+          ssh -i key.pem $EC2_USER@$EC2_HOST << 'EOF'
+          # Stop previous service
+          sudo systemctl stop order-service || true
+
+          # Replace the JAR
+          mv ~/order-service-1.0-SNAPSHOT.jar /opt/order-service/order-service.jar
+
+          # Start service
+          sudo systemctl start order-service
+
+          # Optional: check status
+          sudo systemctl status order-service
+          EOF
+
       - name: Verify Java version
         run: java -version
 
