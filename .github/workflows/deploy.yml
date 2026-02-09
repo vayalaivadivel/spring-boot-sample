@@ -56,3 +56,7 @@ jobs:
         run: |
           echo "Deploying ${{ matrix.service }}..."
           # Insert your EC2 deployment commands here
+          
+      - name: Verify Java version
+        run: java -version
+
