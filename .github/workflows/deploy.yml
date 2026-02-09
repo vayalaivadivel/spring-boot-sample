@@ -27,6 +27,11 @@ jobs:
         working-directory: sbt-kafka-order-payment-stock-service
 
     steps:
+      - name: Debug workspace
+        run: |
+          pwd
+          ls -lrt
+
       - name: Checkout source
         uses: actions/checkout@v4
 
