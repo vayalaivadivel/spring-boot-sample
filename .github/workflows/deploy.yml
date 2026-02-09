@@ -1,15 +1,14 @@
 name: Deploy Multiple Microservices to EC2
 
+# Trigger on push to master/main OR manual run
 on:
   push:
     branches:
       - master
       - main
     paths:
-      - "sbt-kafka-order-payment-stock-service/order-service/**"
-      # - "sbt-kafka-order-payment-stock-service/payment-service/**"
-      # - "sbt-kafka-order-payment-stock-service/stock-service/**"
-      - "sbt-kafka-order-payment-stock-service/core-common/**"
+      - "sbt-kafka-order-payment-stock-service/**"
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -22,53 +21,38 @@ jobs:
 #          - payment-service
 #          - stock-service
 
-    defaults:
-      run:
-        working-directory: sbt-kafka-order-payment-stock-service
-
     steps:
-      - name: Debug workspace
-        run: |
-          pwd
-          ls -lrt
-
-      - name: Checkout source
+      # 1️⃣ Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up JDK 21
+      # 2️⃣ Set up Java 21
+      - name: Setup Java 21
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: '21'
           cache: maven
 
-
-      # - name: Build service
-      #   run: |
-      #     cd ${{ matrix.service }}
-      #     mvn clean package -DskipTests
-      - name: Build all modules
+      # 3️⃣ Debug folder structure
+      - name: Debug workspace
         run: |
-          cd sbt-kafka-order-payment-stock-service
+          echo "Current directory:"
+          pwd
+          echo "Repo root contents:"
+          ls -lrt
+          echo "sbt-kafka-order-payment-stock-service contents:"
+          ls -lrt sbt-kafka-order-payment-stock-service || echo "Folder not found"
+
+      # 4️⃣ Build all Maven modules from parent POM
+      - name: Build Maven project
+        run: |
+          # Adjust this folder name to whatever is actually in repo
+          cd sbt-kafka-order-payment-stock-service || exit 1
           mvn clean install -DskipTests
 
-
-      - name: Copy JAR to EC2
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          source: "sbt-kafka-order-payment-stock-service/${{ matrix.service }}/target/*.jar"
-          target: "/opt/microservices/${{ matrix.service }}"
-
-      - name: Restart service on EC2
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            sudo mv /opt/microservices/${{ matrix.service }}/target/*.jar \
-                    /opt/microservices/${{ matrix.service }}/app.jar
-            sudo systemctl restart ${{ matrix.service }}
+      # 5️⃣ Optional: deploy service
+      - name: Deploy service
+        run: |
+          echo "Deploying ${{ matrix.service }}..."
+          # Insert your EC2 deployment commands here
