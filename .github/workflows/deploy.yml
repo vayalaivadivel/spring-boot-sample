@@ -57,7 +57,7 @@ jobs:
           echo "${{ secrets.EC2_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
           chmod 644 ~/.ssh/known_hosts
 
-      # 6️⃣ Deploy service to EC2
+      # 6️⃣ Deploy order-service to EC2
       - name: Deploy order-service to EC2
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
@@ -70,11 +70,11 @@ jobs:
           echo "$EC2_KEY" > key.pem
           chmod 600 key.pem
 
-          # Copy JAR to EC2 (uses known_hosts)
-          scp -i key.pem -o UserKnownHostsFile=~/.ssh/known_hosts sbt-kafka-order-payment-stock-service/${{ matrix.service }}/target/${{ matrix.service }}-1.0-SNAPSHOT.jar $EC2_USER@$EC2_HOST:/home/$EC2_USER/
+          # Copy JAR to EC2 **disabling host key checking**
+          scp -i key.pem -o StrictHostKeyChecking=no sbt-kafka-order-payment-stock-service/${{ matrix.service }}/target/${{ matrix.service }}-1.0-SNAPSHOT.jar $EC2_USER@$EC2_HOST:/home/$EC2_USER/
 
-          # SSH into EC2 and restart service
-          ssh -i key.pem -o UserKnownHostsFile=~/.ssh/known_hosts $EC2_USER@$EC2_HOST << 'EOF'
+          # SSH into EC2 and restart service **disabling host key checking**
+          ssh -i key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST << 'EOF'
             sudo systemctl stop order-service || true
             mv ~/order-service-1.0-SNAPSHOT.jar /opt/order-service/order-service.jar
             sudo systemctl start order-service
