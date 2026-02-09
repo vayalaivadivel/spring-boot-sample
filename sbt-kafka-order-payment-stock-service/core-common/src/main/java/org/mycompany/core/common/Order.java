@@ -22,7 +22,7 @@ public record Order(
     public Order(Long id, Long customerId, Long productId, int productCount, int price, String status) {
         this(id, customerId, productId, productCount, price, status, null);
     }
-
+    // This for whole controller
     public Order {
 
     }
