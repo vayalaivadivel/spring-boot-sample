@@ -4,10 +4,11 @@ on:
   push:
     branches:
       - master
+      - main
     paths:
       - "sbt-kafka-order-payment-stock-service/order-service/**"
-      - "sbt-kafka-order-payment-stock-service/payment-service/**"
-      - "sbt-kafka-order-payment-stock-service/stock-service/**"
+      # - "sbt-kafka-order-payment-stock-service/payment-service/**"
+      # - "sbt-kafka-order-payment-stock-service/stock-service/**"
       - "sbt-kafka-order-payment-stock-service/core-common/**"
 
 jobs:
