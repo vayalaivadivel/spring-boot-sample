@@ -1,12 +1,17 @@
 package org.mycompany.order.service;
 
 import org.mycompany.core.common.Order;
+import org.mycompany.order.controller.OrderController;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 @Service
 public class OrderManageService {
-    public Order confirm(Order orderPayment, Order orderStock) {
+    private static final Logger LOG = LoggerFactory.getLogger(OrderManageService.class);
 
+    public Order confirm(Order orderPayment, Order orderStock) {
+        LOG.info("Order payment status: {}", orderPayment.status());
         if (orderPayment.status().equals("ACCEPT") &&
                 orderStock.status().equals("ACCEPT")) {
             return new Order(orderPayment.id(),
