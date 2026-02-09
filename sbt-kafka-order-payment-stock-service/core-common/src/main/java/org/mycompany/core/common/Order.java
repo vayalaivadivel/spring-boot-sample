@@ -23,6 +23,4 @@ public record Order(
     // This for whole controller
     public Order {
     }
-
-
 }
