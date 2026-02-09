@@ -1,5 +1,4 @@
 package org.mycompany.core.common;
-
 public record Order(
         Long id,
         Long customerId,
