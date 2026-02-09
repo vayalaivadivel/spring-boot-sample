@@ -47,60 +47,40 @@ jobs:
       # 4️⃣ Build all Maven modules from parent POM
       - name: Build Maven project
         run: |
-          # Adjust this folder name to whatever is actually in repo
           cd sbt-kafka-order-payment-stock-service || exit 1
           mvn clean install -DskipTests
 
-      # ✅ Add EC2 host to known_hosts BEFORE connecting
+      # 5️⃣ Add EC2 host to known_hosts
       - name: Add EC2 to known_hosts
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.EC2_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
           chmod 644 ~/.ssh/known_hosts
 
-      # 5️⃣ Optional: deploy service
+      # 6️⃣ Deploy service to EC2
       - name: Deploy order-service to EC2
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER }}
-          EC2_KEY: ${{ secrets.EC2_KEY }}  # private key stored as GitHub Secret
+          EC2_KEY: ${{ secrets.EC2_KEY }}
         run: |
-          echo "Deploying order-service..."
+          echo "Deploying ${{ matrix.service }}..."
 
           # Write private key to temporary file
-          # Write private key
           echo "$EC2_KEY" > key.pem
           chmod 600 key.pem
 
-          # Copy JAR to EC2
-          scp -i key.pem -o UserKnownHostsFile=~/.ssh/known_hosts sbt-kafka-order-payment-stock-service/order-service/target/order-service-1.0-SNAPSHOT.jar $EC2_USER@$EC2_HOST:/home/$EC2_USER/
-
-          # SSH into EC2
-          ssh -i key.pem -o UserKnownHostsFile=~/.ssh/known_hosts $EC2_USER@$EC2_HOST << 'EOF'
-          sudo systemctl stop order-service || true
-          mv ~/order-service-1.0-SNAPSHOT.jar /opt/order-service/order-service.jar
-          sudo systemctl start order-service
-          sudo systemctl status order-service
-          EOF
-
-          # Copy JAR to EC2
-          scp -i key.pem sbt-kafka-order-payment-stock-service/order-service/target/order-service-1.0-SNAPSHOT.jar $EC2_USER@$EC2_HOST:/home/$EC2_USER/
+          # Copy JAR to EC2 (uses known_hosts)
+          scp -i key.pem -o UserKnownHostsFile=~/.ssh/known_hosts sbt-kafka-order-payment-stock-service/${{ matrix.service }}/target/${{ matrix.service }}-1.0-SNAPSHOT.jar $EC2_USER@$EC2_HOST:/home/$EC2_USER/
 
           # SSH into EC2 and restart service
-          ssh -i key.pem $EC2_USER@$EC2_HOST << 'EOF'
-          # Stop previous service
-          sudo systemctl stop order-service || true
-
-          # Replace the JAR
-          mv ~/order-service-1.0-SNAPSHOT.jar /opt/order-service/order-service.jar
-
-          # Start service
-          sudo systemctl start order-service
-
-          # Optional: check status
-          sudo systemctl status order-service
+          ssh -i key.pem -o UserKnownHostsFile=~/.ssh/known_hosts $EC2_USER@$EC2_HOST << 'EOF'
+            sudo systemctl stop order-service || true
+            mv ~/order-service-1.0-SNAPSHOT.jar /opt/order-service/order-service.jar
+            sudo systemctl start order-service
+            sudo systemctl status order-service
           EOF
 
+      # 7️⃣ Verify Java version
       - name: Verify Java version
         run: java -version
-
