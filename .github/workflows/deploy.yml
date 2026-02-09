@@ -68,8 +68,20 @@ jobs:
           echo "Deploying order-service..."
 
           # Write private key to temporary file
+          # Write private key
           echo "$EC2_KEY" > key.pem
           chmod 600 key.pem
+
+          # Copy JAR to EC2
+          scp -i key.pem -o UserKnownHostsFile=~/.ssh/known_hosts sbt-kafka-order-payment-stock-service/order-service/target/order-service-1.0-SNAPSHOT.jar $EC2_USER@$EC2_HOST:/home/$EC2_USER/
+
+          # SSH into EC2
+          ssh -i key.pem -o UserKnownHostsFile=~/.ssh/known_hosts $EC2_USER@$EC2_HOST << 'EOF'
+          sudo systemctl stop order-service || true
+          mv ~/order-service-1.0-SNAPSHOT.jar /opt/order-service/order-service.jar
+          sudo systemctl start order-service
+          sudo systemctl status order-service
+          EOF
 
           # Copy JAR to EC2
           scp -i key.pem sbt-kafka-order-payment-stock-service/order-service/target/order-service-1.0-SNAPSHOT.jar $EC2_USER@$EC2_HOST:/home/$EC2_USER/
