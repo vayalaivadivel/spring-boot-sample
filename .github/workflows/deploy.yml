@@ -18,8 +18,8 @@ jobs:
       matrix:
         service:
           - order-service
-#          - payment-service
-#          - stock-service
+          # - payment-service
+          # - stock-service
 
     steps:
       # 1️⃣ Checkout code
@@ -44,21 +44,14 @@ jobs:
           echo "sbt-kafka-order-payment-stock-service contents:"
           ls -lrt sbt-kafka-order-payment-stock-service || echo "Folder not found"
 
-      # 4️⃣ Build all Maven modules from parent POM
+      # 4️⃣ Build Maven project
       - name: Build Maven project
         run: |
           cd sbt-kafka-order-payment-stock-service || exit 1
           mvn clean install -DskipTests
 
-      # 5️⃣ Add EC2 host to known_hosts
-      - name: Add EC2 to known_hosts
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
-          chmod 644 ~/.ssh/known_hosts
-
-      # 6️⃣ Deploy order-service to EC2
-      - name: Deploy order-service to EC2
+      # 5️⃣ Deploy service to EC2
+      - name: Deploy ${{ matrix.service }} to EC2
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER }}
@@ -66,21 +59,21 @@ jobs:
         run: |
           echo "Deploying ${{ matrix.service }}..."
 
-          # Write private key to temporary file
-          echo "$EC2_KEY" > key.pem
+          # Write private key to file preserving line breaks
+          printf "%s\n" "$EC2_KEY" > key.pem
           chmod 600 key.pem
 
-          # Copy JAR to EC2 **disabling host key checking**
+          # Copy JAR to EC2
           scp -i key.pem -o StrictHostKeyChecking=no sbt-kafka-order-payment-stock-service/${{ matrix.service }}/target/${{ matrix.service }}-1.0-SNAPSHOT.jar $EC2_USER@$EC2_HOST:/home/$EC2_USER/
 
-          # SSH into EC2 and restart service **disabling host key checking**
+          # SSH into EC2 and restart service
           ssh -i key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST << 'EOF'
-            sudo systemctl stop order-service || true
-            mv ~/order-service-1.0-SNAPSHOT.jar /opt/order-service/order-service.jar
-            sudo systemctl start order-service
-            sudo systemctl status order-service
+            sudo systemctl stop ${{ matrix.service }} || true
+            mv ~/${{ matrix.service }}-1.0-SNAPSHOT.jar /opt/${{ matrix.service }}/${{ matrix.service }}.jar
+            sudo systemctl start ${{ matrix.service }}
+            sudo systemctl status ${{ matrix.service }}
           EOF
 
-      # 7️⃣ Verify Java version
+      # 6️⃣ Verify Java version
       - name: Verify Java version
         run: java -version
