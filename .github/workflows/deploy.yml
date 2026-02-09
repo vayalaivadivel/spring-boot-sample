@@ -55,12 +55,12 @@ jobs:
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER }}
-          EC2_KEY: ${{ secrets.EC2_KEY }}
+          EC2_KEY_B64: ${{ secrets.EC2_KEY_B64 }}
         run: |
           echo "Deploying ${{ matrix.service }}..."
 
-          # Write private key to file preserving line breaks
-          printf "%s\n" "$EC2_KEY" > key.pem
+          # Decode Base64 private key to key.pem
+          echo "$EC2_KEY_B64" | base64 --decode > key.pem
           chmod 600 key.pem
 
           # Copy JAR to EC2
@@ -73,6 +73,7 @@ jobs:
             sudo systemctl start ${{ matrix.service }}
             sudo systemctl status ${{ matrix.service }}
           EOF
+
 
       # 6️⃣ Verify Java version
       - name: Verify Java version
