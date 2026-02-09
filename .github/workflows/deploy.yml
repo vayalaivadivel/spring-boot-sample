@@ -36,10 +36,15 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Build service
+      # - name: Build service
+      #   run: |
+      #     cd ${{ matrix.service }}
+      #     mvn clean package -DskipTests
+      - name: Build all modules
         run: |
-          cd ${{ matrix.service }}
-          mvn clean package -DskipTests
+          cd sbt-kafka-order-payment-stock-service
+          mvn clean install -DskipTests
+
 
       - name: Copy JAR to EC2
         uses: appleboy/scp-action@v0.1.7
