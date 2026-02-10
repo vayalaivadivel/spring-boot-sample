@@ -83,10 +83,14 @@ jobs:
           [Service]
           User=$EC2_USER
           WorkingDirectory=/opt/$SERVICE
-          ExecStart=/usr/bin/java -jar /opt/$SERVICE/$SERVICE.jar
+          ExecStart=/usr/bin/java -Xms512m -Xmx1024m -jar /opt/$SERVICE/$SERVICE.jar
           Restart=always
           RestartSec=5
           SuccessExitStatus=143
+          Environment=JAVA_OPTS="-Xms512m -Xmx1024m"
+          StandardOutput=syslog
+          StandardError=syslog
+          SyslogIdentifier=$SERVICE
 
           [Install]
           WantedBy=multi-user.target
