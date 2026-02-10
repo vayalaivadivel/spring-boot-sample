@@ -2,7 +2,7 @@ name: Deploy Microservices to EC2
 
 on:
   push:
-    branches: [master]
+    branches: [ master ]  # runs on pushes to master
 
 jobs:
   deploy:
@@ -21,15 +21,16 @@ jobs:
 
       - name: Build ${{ matrix.service }}
         run: |
-          mvn -pl sbt-kafka-order-payment-stock-service/${{ matrix.service }} \
-              -am clean package -DskipTests
+          cd sbt-kafka-order-payment-stock-service
+          # Build the service module and its dependencies (like core-common)
+          mvn clean install -pl ${{ matrix.service }} -am -DskipTests
 
       - name: Deploy ${{ matrix.service }} to EC2
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER }}
-          EC2_KEY: ${{ secrets.EC2_KEY }}
-          SERVICE: ${{ matrix.service }}
+          EC2_KEY:  ${{ secrets.EC2_KEY }}
+          SERVICE:  ${{ matrix.service }}
         run: |
           echo "🚀 Deploying $SERVICE..."
 
@@ -37,21 +38,21 @@ jobs:
           echo "$EC2_KEY" > key.pem
           chmod 600 key.pem
 
-          # Path to JAR
+          # Locate JAR for the service
           JAR=$(ls sbt-kafka-order-payment-stock-service/$SERVICE/target/*.jar | head -n 1)
 
           # Copy JAR to EC2
           scp -i key.pem -o StrictHostKeyChecking=no "$JAR" $EC2_USER@$EC2_HOST:/home/$EC2_USER/
 
-          # SSH into EC2 and deploy everything in one session
+          # SSH into EC2 and handle deployment in one session
           ssh -i key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST << EOF
             set -e
 
-            echo "📁 Ensure folder exists"
+            echo "📁 Ensure folder /opt/$SERVICE exists"
             sudo mkdir -p /opt/$SERVICE
             sudo chown -R $EC2_USER:$EC2_USER /opt/$SERVICE
 
-            echo "⚙️ Generate systemd file if missing"
+            echo "⚙️ Create systemd file if missing"
             if [ ! -f /etc/systemd/system/$SERVICE.service ]; then
               sudo tee /etc/systemd/system/$SERVICE.service > /dev/null << EOL
             [Unit]
