@@ -14,11 +14,21 @@ jobs:
           - order-service
 
     steps:
+      # -----------------------------
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # ❌ Java setup removed (EC2 already has Java 21)
+      # -----------------------------
+      - name: Setup Java 21 for Maven build
+        uses: actions/setup-java@v3
+        with:
+          distribution: temurin
+          java-version: 21
 
+      - name: Verify Java version
+        run: java -version
+
+      # -----------------------------
       - name: Build ${{ matrix.service }}
         run: |
           echo "📦 Building ${{ matrix.service }} + dependencies"
@@ -38,6 +48,7 @@ jobs:
 
           echo "✅ Built JAR: $JAR"
 
+      # -----------------------------
       - name: Deploy ${{ matrix.service }} to EC2
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
