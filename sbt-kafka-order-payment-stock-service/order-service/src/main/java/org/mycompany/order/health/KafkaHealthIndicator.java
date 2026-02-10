@@ -1,7 +1,6 @@
 package org.mycompany.order.health;
 
 
-
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.DescribeClusterOptions;
 import org.springframework.boot.actuate.health.AbstractHealthIndicator;
