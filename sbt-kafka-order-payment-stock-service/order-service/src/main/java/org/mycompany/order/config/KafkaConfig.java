@@ -15,7 +15,6 @@ public class KafkaConfig {
 
     @Bean
     public AdminClient adminClient() {
-        // Create a singleton AdminClient from KafkaAdmin's configuration
         return AdminClient.create(kafkaAdmin.getConfigurationProperties());
     }
 }
