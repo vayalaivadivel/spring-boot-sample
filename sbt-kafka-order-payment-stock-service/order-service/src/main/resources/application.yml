@@ -1,6 +1,6 @@
 spring.application.name: orders
 spring.kafka:
-  bootstrap-servers: b-1.practicemsk.e7g2pn.c2.kafka.ap-south-1.amazonaws.com:9094,b-2.practicemsk.e7g2pn.c2.kafka.ap-south-1.amazonaws.com:9094,b-3.practicemsk.e7g2pn.c2.kafka.ap-south-1.amazonaws.com:9094
+  bootstrap-servers: b-1.practicemsk.q6n3il.c22.kafka.us-east-1.amazonaws.com:9094,b-2.practicemsk.q6n3il.c22.kafka.us-east-1.amazonaws.com:9094,b-3.practicemsk.q6n3il.c22.kafka.us-east-1.amazonaws.com:9094
   properties:
     security:
       protocol=SSL:
