@@ -17,28 +17,25 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Java 21
-        uses: actions/setup-java@v3
-        with:
-          distribution: temurin
-          java-version: 21
+      # ❌ Java setup removed (EC2 already has Java 21)
 
       - name: Build ${{ matrix.service }}
         run: |
           echo "📦 Building ${{ matrix.service }} + dependencies"
 
-          # Go to parent of service modules
           cd sbt-kafka-order-payment-stock-service
 
-          # Build core-common + the specific service module
-          mvn clean package -pl ${{ matrix.service }} -am -DskipTests
+          mvn clean package \
+            -pl ${{ matrix.service }} \
+            -am \
+            -DskipTests
 
-          # Locate JAR
-          JAR=$(ls ${{ matrix.service }}/target/*.jar | grep -v "original" | head -n 1)
+          JAR=$(ls ${{ matrix.service }}/target/*.jar | grep -v original | head -n 1)
           if [ ! -f "$JAR" ]; then
             echo "❌ Error: JAR not found for ${{ matrix.service }}"
             exit 1
           fi
+
           echo "✅ Built JAR: $JAR"
 
       - name: Deploy ${{ matrix.service }} to EC2
@@ -50,26 +47,22 @@ jobs:
         run: |
           echo "🚀 Deploying $SERVICE..."
 
-          # Create SSH key
           echo "$EC2_KEY" > key.pem
           chmod 600 key.pem
 
-          # Locate the executable JAR
-          JAR=$(ls sbt-kafka-order-payment-stock-service/$SERVICE/target/*.jar | grep -v "original" | head -n 1)
+          JAR=$(ls sbt-kafka-order-payment-stock-service/$SERVICE/target/*.jar | grep -v original | head -n 1)
           echo "Using JAR: $JAR"
 
-          # Copy JAR to EC2
-          scp -i key.pem -o StrictHostKeyChecking=no "$JAR" $EC2_USER@$EC2_HOST:/home/$EC2_USER/
+          scp -i key.pem -o StrictHostKeyChecking=no \
+            "$JAR" $EC2_USER@$EC2_HOST:/home/$EC2_USER/
 
-          # SSH into EC2 and deploy (variables expand correctly)
-          ssh -i key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST << EOF
+          ssh -i key.pem -o StrictHostKeyChecking=no \
+            $EC2_USER@$EC2_HOST << EOF
           set -e
 
-          echo "📁 Ensure folder /opt/$SERVICE exists"
           sudo mkdir -p /opt/$SERVICE
           sudo chown -R $EC2_USER:$EC2_USER /opt/$SERVICE
 
-          echo "⚙️ Create systemd file if missing"
           if [ ! -f /etc/systemd/system/$SERVICE.service ]; then
           sudo tee /etc/systemd/system/$SERVICE.service > /dev/null << EOL
           [Unit]
@@ -91,15 +84,11 @@ jobs:
           sudo systemctl enable $SERVICE
           fi
 
-          echo "🛑 Stop service if running"
           sudo systemctl stop $SERVICE || true
 
-          echo "📦 Move JAR into place"
           mv /home/$EC2_USER/*.jar /opt/$SERVICE/$SERVICE.jar
 
-          echo "▶️ Start service"
           sudo systemctl start $SERVICE
 
-          echo "📊 Last 50 logs"
           sudo journalctl -u $SERVICE -n 50 --no-pager
           EOF
