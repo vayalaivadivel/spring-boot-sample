@@ -1,20 +1,27 @@
 package org.mycompany.order.health;
+
+import jakarta.annotation.PostConstruct;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.common.KafkaException;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.actuate.health.AbstractHealthIndicator;
 import org.springframework.boot.actuate.health.Health;
+import org.springframework.kafka.core.KafkaAdmin;
 import org.springframework.stereotype.Component;
 
 import java.util.concurrent.TimeUnit;
 
 @Component
 public class KafkaHealthIndicator extends AbstractHealthIndicator {
+    @Autowired
+    private KafkaAdmin kafkaAdmin;
 
-    private final AdminClient adminClient;
+    private AdminClient adminClient;
 
-    public KafkaHealthIndicator(AdminClient adminClient) {
+    @PostConstruct
+    public void init() {
         // Use Spring Boot singleton AdminClient
-        this.adminClient = adminClient;
+        this.adminClient = AdminClient.create(kafkaAdmin.getConfigurationProperties());
     }
 
     @Override
