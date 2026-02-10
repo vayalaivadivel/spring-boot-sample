@@ -1,4 +1,4 @@
-name: Deploy three micro-services-order-service, payment-service, stock-service in EC2
+name: Deploy order-service, payment-service, stock-service microservices to EC2
 
 on:
   push:
@@ -12,8 +12,6 @@ jobs:
       matrix:
         service:
           - order-service
-          - payment-service
-          - stock-service
 
     steps:
       - name: Checkout code
@@ -54,43 +52,43 @@ jobs:
 
           # SSH into EC2 and handle deployment
           ssh -i key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST << EOF
-          set -e
+set -e
 
-          echo "📁 Ensure folder /opt/$SERVICE exists"
-          sudo mkdir -p /opt/$SERVICE
-          sudo chown -R $EC2_USER:$EC2_USER /opt/$SERVICE
+echo "📁 Ensure folder /opt/$SERVICE exists"
+sudo mkdir -p /opt/$SERVICE
+sudo chown -R $EC2_USER:$EC2_USER /opt/$SERVICE
 
-          echo "⚙️ Create systemd file if missing"
-          if [ ! -f /etc/systemd/system/$SERVICE.service ]; then
-          sudo tee /etc/systemd/system/$SERVICE.service > /dev/null << EOL
-          [Unit]
-          Description=$SERVICE
-          After=network.target
+echo "⚙️ Create systemd file if missing"
+if [ ! -f /etc/systemd/system/$SERVICE.service ]; then
+sudo tee /etc/systemd/system/$SERVICE.service > /dev/null << EOL
+[Unit]
+Description=$SERVICE
+After=network.target
 
-          [Service]
-          User=$EC2_USER
-          WorkingDirectory=/opt/$SERVICE
-          ExecStart=/usr/bin/java -jar /opt/$SERVICE/$SERVICE.jar
-          Restart=always
-          RestartSec=5
-          SuccessExitStatus=143
+[Service]
+User=$EC2_USER
+WorkingDirectory=/opt/$SERVICE
+ExecStart=/usr/bin/java -jar /opt/$SERVICE/$SERVICE.jar
+Restart=always
+RestartSec=5
+SuccessExitStatus=143
 
-          [Install]
-          WantedBy=multi-user.target
-          EOL
-          sudo systemctl daemon-reload
-          sudo systemctl enable $SERVICE
-          fi
+[Install]
+WantedBy=multi-user.target
+EOL
+sudo systemctl daemon-reload
+sudo systemctl enable $SERVICE
+fi
 
-          echo "🛑 Stop service if running"
-          sudo systemctl stop $SERVICE || true
+echo "🛑 Stop service if running"
+sudo systemctl stop $SERVICE || true
 
-          echo "📦 Move JAR into place"
-          mv /home/$EC2_USER/*.jar /opt/$SERVICE/$SERVICE.jar
+echo "📦 Move JAR into place"
+mv /home/$EC2_USER/*.jar /opt/$SERVICE/$SERVICE.jar
 
-          echo "▶️ Start service"
-          sudo systemctl start $SERVICE
+echo "▶️ Start service"
+sudo systemctl start $SERVICE
 
-          echo "📊 Service status"
-          sudo systemctl status $SERVICE --no-pager
-          EOF
+echo "📊 Service status"
+sudo systemctl status $SERVICE --no-pager
+EOF
