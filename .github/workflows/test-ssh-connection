@@ -1,0 +1,19 @@
+name: Hello World Workflow
+
+on: [push]  # Triggers the workflow every time you push code
+
+jobs:
+  say-hello:
+    runs-on: ubuntu-latest
+    steps:
+      - name: TEST SSH
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_KEY:  ${{ secrets.EC2_KEY }}
+        run: |
+          echo "$EC2_KEY" > key.pem
+          chmod 600 key.pem
+
+          ssh -vvv -i key.pem -o StrictHostKeyChecking=no \
+            $EC2_USER@$EC2_HOST "echo SSH_OK"
