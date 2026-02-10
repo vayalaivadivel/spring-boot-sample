@@ -1,4 +1,4 @@
-spring.application.name: orders
+spring.application.name: order-service
 spring.kafka:
   bootstrap-servers: b-1.practicemsk.q6n3il.c22.kafka.us-east-1.amazonaws.com:9094,b-2.practicemsk.q6n3il.c22.kafka.us-east-1.amazonaws.com:9094,b-3.practicemsk.q6n3il.c22.kafka.us-east-1.amazonaws.com:9094
   properties:
@@ -21,5 +21,6 @@ management:
   endpoint:
     health:
       show-details: ALWAYS
-
+# Set a custom health URL
+management.endpoints.web.base-path: /order-service
 logging.pattern.console: "%clr(%d{HH:mm:ss.SSS}){blue} %clr(---){faint} %clr([%15.15t]){yellow} %clr(:){red} %clr(%m){faint}%n"
