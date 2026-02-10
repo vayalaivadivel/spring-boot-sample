@@ -30,7 +30,7 @@ jobs:
           # Go to parent of service modules
           cd sbt-kafka-order-payment-stock-service
 
-          # Build core-common + the specific service
+          # Build core-common + the specific service module
           mvn clean package -pl ${{ matrix.service }} -am -DskipTests
 
           # Locate JAR
@@ -61,11 +61,9 @@ jobs:
           # Copy JAR to EC2
           scp -i key.pem -o StrictHostKeyChecking=no "$JAR" $EC2_USER@$EC2_HOST:/home/$EC2_USER/
 
-          # SSH into EC2 and deploy
-          ssh -i key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST << 'EOF'
+          # SSH into EC2 and deploy (variables expand correctly)
+          ssh -i key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST << EOF
           set -e
-
-          SERVICE=$SERVICE
 
           echo "📁 Ensure folder /opt/$SERVICE exists"
           sudo mkdir -p /opt/$SERVICE
