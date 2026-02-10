@@ -12,6 +12,8 @@ jobs:
       matrix:
         service:
           - order-service
+          - payment-service
+          - stock-service
 
     steps:
       - name: Checkout code
@@ -21,15 +23,18 @@ jobs:
         env:
           JAVA_HOME: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/21.0.10-7/x64
         run: |
-          # Ensure Maven uses Java 21
+          # Use Java 21
           export PATH=$JAVA_HOME/bin:$PATH
           java -version
 
           # Go to parent of service modules
           cd sbt-kafka-order-payment-stock-service
 
-          # Build service module + dependencies (core-common)
-          mvn clean install -pl ${{ matrix.service }} -am -DskipTests
+          # Build core-common + the specific service
+          mvn clean package -pl ${{ matrix.service }} -am -DskipTests
+
+          # Verify the executable JAR
+          ls -lh ${{ matrix.service }}/target/*.jar
 
       - name: Deploy ${{ matrix.service }} to EC2
         env:
@@ -44,13 +49,14 @@ jobs:
           echo "$EC2_KEY" > key.pem
           chmod 600 key.pem
 
-          # Locate JAR for the service
-          JAR=$(ls sbt-kafka-order-payment-stock-service/$SERVICE/target/*.jar | head -n 1)
+          # Locate the Spring Boot executable JAR (skip *-original.jar)
+          JAR=$(ls sbt-kafka-order-payment-stock-service/$SERVICE/target/*.jar | grep -v "original" | head -n 1)
+          echo "Using JAR: $JAR"
 
           # Copy JAR to EC2
           scp -i key.pem -o StrictHostKeyChecking=no "$JAR" $EC2_USER@$EC2_HOST:/home/$EC2_USER/
 
-          # SSH into EC2 and handle deployment
+          # SSH into EC2 and deploy
           ssh -i key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST << EOF
           set -e
 
@@ -89,6 +95,6 @@ jobs:
           echo "▶️ Start service"
           sudo systemctl start $SERVICE
 
-          echo "📊 Service status"
-          sudo systemctl status $SERVICE --no-pager
+          echo "📊 Last 50 logs"
+          sudo journalctl -u $SERVICE -n 50 --no-pager
           EOF
