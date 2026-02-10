@@ -27,17 +27,18 @@ public class KafkaHealthIndicator extends AbstractHealthIndicator {
     @Override
     protected void doHealthCheck(Health.Builder builder) {
         try {
-            // Only fetch minimal metadata: cluster ID and node list
-            var clusterIdFuture = adminClient.describeCluster().clusterId();
-            var nodesFuture = adminClient.describeCluster().nodes();
+            String clusterId = adminClient.describeCluster()
+                    .clusterId()
+                    .get(3, TimeUnit.SECONDS);
 
-            String clusterId = clusterIdFuture.get(3, TimeUnit.SECONDS);
-            int nodeCount = nodesFuture.get(3, TimeUnit.SECONDS).size();
+            int nodeCount = adminClient.describeCluster()
+                    .nodes()
+                    .get(3, TimeUnit.SECONDS)
+                    .size();
 
             builder.up()
                     .withDetail("clusterId", clusterId)
                     .withDetail("nodeCount", nodeCount);
-
         } catch (KafkaException ke) {
             builder.down(ke).withDetail("reason", "KafkaException: AdminClient may be unreachable");
         } catch (java.util.concurrent.TimeoutException te) {
