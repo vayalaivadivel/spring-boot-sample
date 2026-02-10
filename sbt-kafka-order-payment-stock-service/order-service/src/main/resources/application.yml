@@ -4,6 +4,10 @@ spring.kafka:
   properties:
     security:
       protocol=SSL:
+  admin.properties:
+    request.timeout.ms: 10000
+    retry.backoff.ms: 5000
+
   producer:
     key-serializer: org.apache.kafka.common.serialization.LongSerializer
     value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
