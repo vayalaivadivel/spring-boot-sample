@@ -1,8 +1,8 @@
-name: Deploy Microservices to EC2
+name: Deploy order-service, payment-service, stock-service microservices to EC2
 
 on:
   push:
-    branches: [ master ]  # runs on pushes to master
+    branches: [ master ]
 
 jobs:
   deploy:
@@ -16,19 +16,21 @@ jobs:
           # - stock-service
 
     steps:
-      - name: Set up Java 21
-        uses: actions/setup-java@v3
-        with:
-          distribution: temurin
-          java-version: 21
-          
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Build ${{ matrix.service }}
+        env:
+          JAVA_HOME: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/21.0.10-7/x64
         run: |
+          # Ensure Maven uses Java 21
+          export PATH=$JAVA_HOME/bin:$PATH
+          java -version
+
+          # Go to parent of service modules
           cd sbt-kafka-order-payment-stock-service
-          # Build the service module and its dependencies (like core-common)
+
+          # Build service module + dependencies (core-common)
           mvn clean install -pl ${{ matrix.service }} -am -DskipTests
 
       - name: Deploy ${{ matrix.service }} to EC2
@@ -50,7 +52,7 @@ jobs:
           # Copy JAR to EC2
           scp -i key.pem -o StrictHostKeyChecking=no "$JAR" $EC2_USER@$EC2_HOST:/home/$EC2_USER/
 
-          # SSH into EC2 and handle deployment in one session
+          # SSH into EC2 and handle deployment
           ssh -i key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST << EOF
             set -e
 
