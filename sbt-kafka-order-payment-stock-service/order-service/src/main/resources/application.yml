@@ -1,10 +1,7 @@
 server.port: 8080
 spring.application.name: order-service
 spring.kafka:
-  bootstrap-servers:
-    - b-1.practicemsk.q6n3il.c22.kafka.us-east-1.amazonaws.com:9094
-    - b-2.practicemsk.q6n3il.c22.kafka.us-east-1.amazonaws.com:9094
-    - b-3.practicemsk.q6n3il.c22.kafka.us-east-1.amazonaws.com:9094
+  bootstrap-servers:  ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
   properties:
     security:
       protocol: SSL
