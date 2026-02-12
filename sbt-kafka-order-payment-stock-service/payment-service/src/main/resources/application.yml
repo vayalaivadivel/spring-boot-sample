@@ -1,5 +1,5 @@
-server.port: 8080
-spring.application.name: order-service
+server.port: 8082
+spring.application.name: payment-service
 spring.kafka:
   bootstrap-servers:
     - b-1.practicemsk.q6n3il.c22.kafka.us-east-1.amazonaws.com:9094
@@ -10,13 +10,18 @@ spring.kafka:
       protocol: SSL
       ssl.endpoint.identification.algorithm: ""   # disables hostname verification
   admin:
-    client-id: adminclient-1
+    client-id: adminclient-2
     request.timeout.ms: 10000
     retry.backoff.ms: 5000
 
   producer:
     key-serializer: org.apache.kafka.common.serialization.LongSerializer
     value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+  consumer:
+    key-deserializer: org.apache.kafka.common.serialization.LongDeserializer
+    value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+    properties.spring.json.trusted.packages: "*"
+
   streams:
     properties:
       default.key.serde: org.apache.kafka.common.serialization.Serdes$LongSerde
@@ -32,5 +37,5 @@ management:
     health:
       show-details: ALWAYS
 # Set a custom health URL
-management.endpoints.web.base-path: /order-service
+management.endpoints.web.base-path: /payment-service
 logging.pattern.console: "%clr(%d{HH:mm:ss.SSS}){blue} %clr(---){faint} %clr([%15.15t]){yellow} %clr(:){red} %clr(%m){faint}%n"

@@ -6,8 +6,8 @@
   <packaging>pom</packaging>
   <modules>
     <module>order-service</module>
-    <!-- <module>payment-service</module>
-    <module>stock-service</module> -->
+    <module>payment-service</module>
+    <!--module>stock-service</module> -->
     <module>core-common</module>
   </modules>
   <properties>

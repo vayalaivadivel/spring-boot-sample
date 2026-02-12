@@ -11,35 +11,28 @@ public class OrderManageService {
 
     public Order confirm(Order orderPayment, Order orderStock) {
         LOG.info("Order payment status: {}", orderPayment.status());
+
+
+        String status=orderPayment.status();
+        String source=orderPayment.source();
         if (orderPayment.status().equals("ACCEPT") &&
                 orderStock.status().equals("ACCEPT")) {
-            return new Order(orderPayment.id(),
-                    orderPayment.id(),
-                    orderPayment.productId(),
-                    orderPayment.productCount(),
-                    orderPayment.price(), "CONFIRMED");
+            status="CONFIRMED";
         } else if (orderPayment.status().equals("REJECT") &&
                 orderStock.status().equals("REJECT")) {
-            return new Order(orderPayment.id(),
-                    orderPayment.id(),
-                    orderPayment.productId(),
-                    orderPayment.productCount(),
-                    orderPayment.price(), "REJECTED");
+            status="REJECTED";
         } else if (orderPayment.status().equals("REJECT") ||
                 orderStock.status().equals("REJECT")) {
-            return new Order(orderPayment.id(),
-                    orderPayment.id(),
-                    orderPayment.productId(),
-                    orderPayment.productCount(),
-                    orderPayment.price(), "ROLLBACK", orderPayment.status().equals("REJECT")
-                    ? "PAYMENT" : "STOCK");
-
-        } else {
-            return new Order(orderPayment.id(),
-                    orderPayment.id(),
-                    orderPayment.productId(),
-                    orderPayment.productCount(),
-                    orderPayment.price());
+            source = orderPayment.status().equals("REJECT")
+                    ? "PAYMENT" : "STOCK";
+            status="ROLLBACK";
         }
+
+
+        return new Order(orderPayment.id(),
+                orderPayment.customerId(),
+                orderPayment.productId(),
+                orderPayment.productCount(),
+                orderPayment.price(), status, source);
     }
 }

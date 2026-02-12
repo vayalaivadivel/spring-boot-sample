@@ -1,4 +1,4 @@
-package org.mycompany.payment.service;
+package org.mycompany.payment;
 
 import junit.framework.Test;
 import junit.framework.TestCase;
@@ -7,14 +7,14 @@ import junit.framework.TestSuite;
 /**
  * Unit test for simple App.
  */
-public class AppTest
+public class PaymentAppTest
         extends TestCase {
     /**
      * Create the test case
      *
      * @param testName name of the test case
      */
-    public AppTest(String testName) {
+    public PaymentAppTest(String testName) {
         super(testName);
     }
 
@@ -22,7 +22,7 @@ public class AppTest
      * @return the suite of tests being tested
      */
     public static Test suite() {
-        return new TestSuite(AppTest.class);
+        return new TestSuite(PaymentAppTest.class);
     }
 
     /**
