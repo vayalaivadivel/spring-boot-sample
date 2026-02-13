@@ -1,4 +1,4 @@
-name: Deploy microservices to EC2 with terraform
+name: Deploy microservices to EC2 with terraform usin iam
 
 on:
   push:
@@ -40,13 +40,11 @@ jobs:
           cd sbt-kafka-order-payment-stock-service
           mvn clean package -pl ${{ matrix.service }} -am -DskipTests
 
-      # 🔥 Upload artifact for next jobs
-      - name: Upload JAR
+      - name: Upload JAR Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.service }}
           path: sbt-kafka-order-payment-stock-service/${{ matrix.service }}/target/*.jar
-
 
 
 # =====================================================
@@ -63,7 +61,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # 🔥 Configure IAM user (vadivel-iam)
+      # Configure IAM user credentials
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -71,38 +69,37 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      # 🔎 Debug: confirm IAM identity
+      # Debug: verify IAM identity
       - name: Verify AWS Identity
         run: aws sts get-caller-identity
 
       - uses: hashicorp/setup-terraform@v3
 
       - name: Terraform Init
-        working-directory: terraform
+        working-directory: sbt-kafka-order-payment-stock-service/terraform
         run: terraform init
 
       - name: Terraform Validate
-        working-directory: terraform
+        working-directory: sbt-kafka-order-payment-stock-service/terraform
         run: terraform validate
 
       - name: Terraform Plan
-        working-directory: terraform
+        working-directory: sbt-kafka-order-payment-stock-service/terraform
         run: |
           terraform plan \
             -var-file=${{ env.ENVIRONMENT }}/terraform.tfvars \
             -out=tfplan
 
       - name: Terraform Apply
-        working-directory: terraform
+        working-directory: sbt-kafka-order-payment-stock-service/terraform
         run: terraform apply -auto-approve tfplan
 
       - name: Get Terraform Outputs
         id: tf_outputs
-        working-directory: terraform
+        working-directory: sbt-kafka-order-payment-stock-service/terraform
         run: |
           echo "ec2_ip=$(terraform output -raw ec2_public_ip)" >> $GITHUB_OUTPUT
           echo "kafka_brokers=$(terraform output -raw kafka_bootstrap_brokers)" >> $GITHUB_OUTPUT
-
 
 
 # =====================================================
@@ -121,8 +118,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # 🔥 Download artifact from build job
-      - name: Download JAR
+      # Download JAR artifact from build
+      - name: Download JAR Artifact
         uses: actions/download-artifact@v4
         with:
           name: ${{ matrix.service }}
@@ -140,21 +137,20 @@ jobs:
           chmod 600 key.pem
 
           JAR=$(ls *.jar | head -n 1)
-
           echo "🚀 Deploying $SERVICE to $EC2_HOST"
 
-          scp -i key.pem -o StrictHostKeyChecking=no \
-            "$JAR" $EC2_USER@$EC2_HOST:/home/$EC2_USER/
+          scp -i key.pem -o StrictHostKeyChecking=no "$JAR" $EC2_USER@$EC2_HOST:/home/$EC2_USER/
 
-          ssh -i key.pem -o StrictHostKeyChecking=no \
-            $EC2_USER@$EC2_HOST << EOF
+          ssh -i key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST << EOF
           set -e
 
           sudo mkdir -p /opt/$SERVICE
           sudo chown -R $EC2_USER:$EC2_USER /opt/$SERVICE
 
+          # Create environment file
           echo "KAFKA_BOOTSTRAP_SERVERS=$KAFKA_BROKERS" | sudo tee /opt/$SERVICE/.env
 
+          # Create systemd service if not exists
           if [ ! -f /etc/systemd/system/$SERVICE.service ]; then
             sudo tee /etc/systemd/system/$SERVICE.service > /dev/null << EOL
           [Unit]
