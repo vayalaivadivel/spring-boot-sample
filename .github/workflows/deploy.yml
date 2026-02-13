@@ -47,11 +47,11 @@ jobs:
             CHANGED_SERVICES="order-service payment-service stock-service"
           fi
 
-          # Convert space-separated to JSON array
-          JSON_ARRAY=$(echo $CHANGED_SERVICES | jq -R 'split(" ")')
+          # Convert space-separated to compact JSON array (single line)
+          JSON_ARRAY=$(echo $CHANGED_SERVICES | jq -R 'split(" ")' | jq -c .)
           echo "JSON array: $JSON_ARRAY"
 
-          # Set output via environment file (modern approach)
+          # Set output via environment file
           echo "services=$JSON_ARRAY" >> $GITHUB_OUTPUT
 
 # ==========================================================
