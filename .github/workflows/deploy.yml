@@ -4,66 +4,60 @@ on:
   push:
     branches:
       - master
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment (dev/prod)"
+        required: true
+        default: "dev"
 
 env:
   AWS_REGION: us-east-1
+  PROJECT_DIR: sbt-kafka-order-payment-stock-service
+  ENVIRONMENT: ${{ github.event.inputs.environment || 'dev' }}
 
-# ==========================================================
-# 1️⃣ Terraform Provision (EC2 + MSK)
-# ==========================================================
 jobs:
 
-  terraform:
-    name: Terraform Apply
+# ==========================================================
+# 1️⃣ Detect Changed Services
+# ==========================================================
+  detect-changes:
+    name: Detect Changed Services
     runs-on: ubuntu-latest
-
     outputs:
-      ec2_ip: ${{ steps.tf_outputs.outputs.ec2_ip }}
-      kafka_brokers_tls: ${{ steps.tf_outputs.outputs.kafka_brokers_tls }}
+      services: ${{ steps.set-matrix.outputs.services }}
 
     steps:
-      - name: Checkout Code
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Configure AWS Credentials (IAM User)
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-
-      - name: Terraform Init
-        working-directory: terraform
-        run: terraform init
-
-      - name: Terraform Apply
-        working-directory: terraform
-        run: terraform apply -auto-approve
-
-      - name: Get Terraform Outputs
-        id: tf_outputs
-        working-directory: terraform
+      - name: Detect changed services
+        id: set-matrix
         run: |
-          echo "ec2_ip=$(terraform output -raw ec2_public_ip)" >> $GITHUB_OUTPUT
-          echo "kafka_brokers_tls=$(terraform output -raw kafka_bootstrap_brokers_tls)" >> $GITHUB_OUTPUT
-
+          echo "Looking for changes in services..."
+          CHANGED_SERVICES=$(git diff --name-only HEAD^ HEAD ${{ env.PROJECT_DIR }}/ | grep -E 'order-service|payment-service|stock-service' | awk -F'/' '{print $2}' | sort -u | tr '\n' ',' | sed 's/,$//')
+          if [ -z "$CHANGED_SERVICES" ]; then
+            echo "No service changes detected, defaulting to all"
+            CHANGED_SERVICES="order-service,payment-service,stock-service"
+          fi
+          echo "Changed services: $CHANGED_SERVICES"
+          echo "::set-output name=services::$CHANGED_SERVICES"
 
 # ==========================================================
-# 2️⃣ Build Spring Boot Services
+# 2️⃣ Build Changed Services (Matrix)
 # ==========================================================
   build:
-    name: Build Services
+    name: Build Changed Services
     runs-on: ubuntu-latest
-    needs: terraform
+    needs: detect-changes
 
     strategy:
       matrix:
-        service:
-          - order-service
-          - payment-service
+        service: ${{ fromJson('["' + needs.detect-changes.outputs.services + '"]') }}
+
+    defaults:
+      run:
+        working-directory: ${{ env.PROJECT_DIR }}/${{ matrix.service }}
 
     steps:
       - name: Checkout Code
@@ -76,48 +70,92 @@ jobs:
           java-version: 21
 
       - name: Build ${{ matrix.service }}
-        working-directory: ${{ matrix.service }}
-        run: mvn clean package -DskipTests
+        run: |
+          mvn clean package -DskipTests
+          JAR=$(ls target/*.jar | grep -v original | head -n1)
+          if [ ! -f "$JAR" ]; then
+            echo "❌ JAR not found for $SERVICE"
+            exit 1
+          fi
+          echo "✅ Built $JAR"
 
-      - name: Upload Artifact
+      - name: Upload ${{ matrix.service }} Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.service }}
-          path: ${{ matrix.service }}/target/*.jar
-
+          path: target/*.jar
 
 # ==========================================================
-# 3️⃣ Deploy to EC2
+# 3️⃣ Terraform Provision
+# ==========================================================
+  terraform:
+    name: Terraform Apply
+    runs-on: ubuntu-latest
+    needs: build
+
+    outputs:
+      ec2_ip: ${{ steps.tf_outputs.outputs.ec2_ip }}
+      kafka_brokers_tls: ${{ steps.tf_outputs.outputs.kafka_brokers_tls }}
+
+    defaults:
+      run:
+        working-directory: ${{ env.PROJECT_DIR }}/terraform
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve
+
+      - name: Get Terraform Outputs
+        id: tf_outputs
+        run: |
+          echo "ec2_ip=$(terraform output -raw ec2_public_ip)" >> $GITHUB_OUTPUT
+          echo "kafka_brokers_tls=$(terraform output -raw kafka_bootstrap_brokers_tls)" >> $GITHUB_OUTPUT
+
+# ==========================================================
+# 4️⃣ Deploy Changed Services (Matrix)
 # ==========================================================
   deploy:
-    name: Deploy Services
+    name: Deploy Changed Services
     runs-on: ubuntu-latest
-    needs: [terraform, build]
+    needs: [build, terraform]
 
     strategy:
       matrix:
-        service:
-          - order-service
-          - payment-service
+        service: ${{ fromJson('["' + needs.detect-changes.outputs.services + '"]') }}
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Download Artifact
+      - name: Download Artifact for ${{ matrix.service }}
         uses: actions/download-artifact@v4
         with:
           name: ${{ matrix.service }}
           path: .
 
-      - name: Deploy ${{ matrix.service }} to EC2
+      - name: Deploy ${{ matrix.service }} to EC2 with Kafka Check
         env:
           EC2_HOST: ${{ needs.terraform.outputs.ec2_ip }}
           EC2_USER: ${{ secrets.EC2_USER }}
           EC2_KEY:  ${{ secrets.EC2_KEY }}
           SERVICE:  ${{ matrix.service }}
           KAFKA_BROKERS: ${{ needs.terraform.outputs.kafka_brokers_tls }}
-
         run: |
           echo "$EC2_KEY" > key.pem
           chmod 600 key.pem
@@ -125,20 +163,32 @@ jobs:
           JAR=$(ls *.jar | head -n 1)
           echo "🚀 Deploying $SERVICE to $EC2_HOST"
 
-          # Copy JAR
           scp -i key.pem -o StrictHostKeyChecking=no "$JAR" $EC2_USER@$EC2_HOST:/home/$EC2_USER/
 
-          # SSH Configuration
           ssh -i key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST << EOF
           set -e
 
           sudo mkdir -p /opt/$SERVICE
           sudo chown -R $EC2_USER:$EC2_USER /opt/$SERVICE
+          mv /home/$EC2_USER/*.jar /opt/$SERVICE/$SERVICE.jar
 
-          # Write Kafka TLS broker to .env
           echo "KAFKA_BOOTSTRAP_SERVERS=$KAFKA_BROKERS" | sudo tee /opt/$SERVICE/.env
 
-          # Create systemd service
+          # Pre-deploy Kafka health check
+          echo "🔎 Checking Kafka connectivity..."
+          MAX_TRIES=5
+          for TRY in \$(seq 1 \$MAX_TRIES); do
+            nc -zv -w 5 $(echo $KAFKA_BROKERS | cut -d',' -f1 | cut -d':' -f1) $(echo $KAFKA_BROKERS | cut -d',' -f1 | cut -d':' -f2) && break
+            echo "Attempt \$TRY: Kafka not reachable, retrying..."
+            sleep 5
+            if [ \$TRY -eq \$MAX_TRIES ]; then
+              echo "❌ Kafka is not reachable. Aborting deployment."
+              exit 1
+            fi
+          done
+          echo "✅ Kafka reachable."
+
+          # Create/Update systemd service
           sudo tee /etc/systemd/system/$SERVICE.service > /dev/null << EOL
           [Unit]
           Description=$SERVICE
@@ -157,10 +207,6 @@ jobs:
 
                     sudo systemctl daemon-reload
                     sudo systemctl enable $SERVICE
-
-                    # Move new JAR
-                    mv /home/$EC2_USER/*.jar /opt/$SERVICE/$SERVICE.jar
-
                     sudo systemctl restart $SERVICE
                     sudo systemctl status $SERVICE --no-pager
           EOF
