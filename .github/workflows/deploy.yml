@@ -68,7 +68,7 @@ jobs:
 
     defaults:
       run:
-        working-directory: ${{ env.PROJECT_DIR }}/${{ matrix.service }}
+        working-directory: ${{ env.PROJECT_DIR }}
 
     steps:
       - name: Checkout Code
@@ -82,13 +82,14 @@ jobs:
 
       - name: Build ${{ matrix.service }}
         run: |
-          mvn clean package -DskipTests
-          JAR=$(ls target/*.jar | grep -v original | head -n1)
+          mvn clean package -pl ${{ matrix.service }} -am -DskipTests
+          JAR=$(ls ${{ matrix.service }}/target/*.jar | grep -v original | head -n1)
           if [ ! -f "$JAR" ]; then
             echo "❌ JAR not found for $SERVICE"
             exit 1
           fi
           echo "✅ Built $JAR"
+
 
       - name: Upload ${{ matrix.service }} Artifact
         uses: actions/upload-artifact@v4
