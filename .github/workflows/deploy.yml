@@ -1,4 +1,4 @@
-name: CI-CD-Terraform-EC2-MSK
+name: CI-CD-Terraform-EC2-MSK with IAM
 
 on:
   push:
@@ -19,7 +19,7 @@ env:
 jobs:
 
 # ==========================================================
-# 1️⃣ Detect Changed Services
+# 1️⃣ Detect Changed Services (Only Existing Modules)
 # ==========================================================
   detect-changes:
     name: Detect Changed Services
@@ -31,7 +31,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # ensure full history for git diff
+          fetch-depth: 0  # full history for git diff
 
       - name: Detect changed services
         id: set-matrix
@@ -40,18 +40,29 @@ jobs:
 
           git fetch origin master
 
+          # List all potential modules
+          POTENTIAL_SERVICES="order-service payment-service stock-service"
+
+          EXISTING_SERVICES=""
+          for SVC in $POTENTIAL_SERVICES; do
+            if [ -d "${{ env.PROJECT_DIR }}/$SVC" ]; then
+              EXISTING_SERVICES="$EXISTING_SERVICES $SVC"
+            fi
+          done
+
+          # Detect changed modules
           CHANGED_SERVICES=$(git diff --name-only origin/master...HEAD ${{ env.PROJECT_DIR }}/ | grep -E 'order-service|payment-service|stock-service' | awk -F'/' '{print $2}' | sort -u)
 
           if [ -z "$CHANGED_SERVICES" ]; then
-            echo "No service changes detected, defaulting to all"
-            CHANGED_SERVICES="order-service payment-service stock-service"
+            echo "No service changes detected, defaulting to existing modules"
+            CHANGED_SERVICES=$EXISTING_SERVICES
           fi
 
-          # Convert space-separated to compact JSON array (single line)
+          # Convert to compact JSON array (single line)
           JSON_ARRAY=$(echo $CHANGED_SERVICES | jq -R 'split(" ")' | jq -c .)
           echo "JSON array: $JSON_ARRAY"
 
-          # Set output via environment file
+          # Set output for matrix
           echo "services=$JSON_ARRAY" >> $GITHUB_OUTPUT
 
 # ==========================================================
@@ -68,7 +79,7 @@ jobs:
 
     defaults:
       run:
-        working-directory: ${{ env.PROJECT_DIR }}
+        working-directory: ${{ env.PROJECT_DIR }}   # Parent project so dependencies are resolved
 
     steps:
       - name: Checkout Code
@@ -90,12 +101,11 @@ jobs:
           fi
           echo "✅ Built $JAR"
 
-
-      - name: Upload ${{ matrix.service }} Artifact
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.service }}
-          path: target/*.jar
+          path: ${{ matrix.service }}/target/*.jar
 
 # ==========================================================
 # 3️⃣ Terraform Provision
@@ -185,20 +195,6 @@ jobs:
           mv /home/$EC2_USER/*.jar /opt/$SERVICE/$SERVICE.jar
 
           echo "KAFKA_BOOTSTRAP_SERVERS=$KAFKA_BROKERS" | sudo tee /opt/$SERVICE/.env
-
-          # Pre-deploy Kafka health check
-          echo "🔎 Checking Kafka connectivity..."
-          MAX_TRIES=5
-          for TRY in \$(seq 1 \$MAX_TRIES); do
-            nc -zv -w 5 $(echo $KAFKA_BROKERS | cut -d',' -f1 | cut -d':' -f1) $(echo $KAFKA_BROKERS | cut -d',' -f1 | cut -d':' -f2) && break
-            echo "Attempt \$TRY: Kafka not reachable, retrying..."
-            sleep 5
-            if [ \$TRY -eq \$MAX_TRIES ]; then
-              echo "❌ Kafka is not reachable. Aborting deployment."
-              exit 1
-            fi
-          done
-          echo "✅ Kafka reachable."
 
           # Create/Update systemd service
           sudo tee /etc/systemd/system/$SERVICE.service > /dev/null << EOL
