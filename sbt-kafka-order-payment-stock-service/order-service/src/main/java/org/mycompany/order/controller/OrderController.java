@@ -52,7 +52,7 @@ public class OrderController {
 
     @PostMapping("/generate")
     public boolean create() {
-        LOG.info("Creating orders");
+        LOG.info("Create list of orders");
         orderGeneratorService.generate();
         return true;
     }

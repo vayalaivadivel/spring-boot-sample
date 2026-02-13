@@ -30,12 +30,18 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # ensure full history for git diff
 
       - name: Detect changed services
         id: set-matrix
         run: |
           echo "Looking for changes in services..."
-          CHANGED_SERVICES=$(git diff --name-only HEAD^ HEAD ${{ env.PROJECT_DIR }}/ | grep -E 'order-service|payment-service|stock-service' | awk -F'/' '{print $2}' | sort -u)
+
+          git fetch origin master
+
+          CHANGED_SERVICES=$(git diff --name-only origin/master...HEAD ${{ env.PROJECT_DIR }}/ | grep -E 'order-service|payment-service|stock-service' | awk -F'/' '{print $2}' | sort -u)
+
           if [ -z "$CHANGED_SERVICES" ]; then
             echo "No service changes detected, defaulting to all"
             CHANGED_SERVICES="order-service payment-service stock-service"
@@ -45,7 +51,8 @@ jobs:
           JSON_ARRAY=$(echo $CHANGED_SERVICES | jq -R 'split(" ")')
           echo "JSON array: $JSON_ARRAY"
 
-          echo "::set-output name=services::$JSON_ARRAY"
+          # Set output via environment file (modern approach)
+          echo "services=$JSON_ARRAY" >> $GITHUB_OUTPUT
 
 # ==========================================================
 # 2️⃣ Build Changed Services (Matrix)
