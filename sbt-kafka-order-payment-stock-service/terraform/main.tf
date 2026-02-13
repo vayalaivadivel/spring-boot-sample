@@ -41,14 +41,6 @@ resource "aws_subnet" "private_2" {
   availability_zone = "${var.region}b"
   tags = { Name = "private-2" }
 }
-
-resource "aws_subnet" "private_3" {
-  vpc_id            = aws_vpc.main.id
-  cidr_block        = "10.0.4.0/24"
-  availability_zone = "${var.region}c"
-  tags = { Name = "private-3" }
-}
-
 ############################
 # Route Table for public subnet
 ############################
@@ -157,8 +149,7 @@ resource "aws_msk_cluster" "kafka" {
     instance_type = var.kafka_instance_type
     client_subnets = [
       aws_subnet.private_1.id,
-      aws_subnet.private_2.id,
-      aws_subnet.private_3.id
+      aws_subnet.private_2.id
     ]
     security_groups = [aws_security_group.msk_sg.id]
 
