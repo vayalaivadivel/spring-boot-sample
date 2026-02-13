@@ -14,5 +14,6 @@ output "kafka_bootstrap_brokers_tls" {
   description = "Kafka bootstrap brokers (TLS)"
 }
 output "kafka_bootstrap_brokers" {
+  description = "Kafka bootstrap brokers"
   value = aws_msk_cluster.kafka.bootstrap_brokers
 }

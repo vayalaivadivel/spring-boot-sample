@@ -1,111 +1,61 @@
-name: Deploy microservices to EC2 with terraform usin iam
+name: CI-CD-Terraform-EC2-MSK
 
 on:
   push:
-    branches: [ master ]
-  workflow_dispatch:
-    inputs:
-      environment:
-        description: "Environment (dev or prod)"
-        required: true
-        default: "dev"
+    branches:
+      - main
 
 env:
-  ENVIRONMENT: ${{ github.event.inputs.environment || 'dev' }}
+  AWS_REGION: us-east-1
 
+# ==========================================================
+# 1️⃣ Terraform Provision (EC2 + MSK)
+# ==========================================================
 jobs:
 
-# =====================================================
-# 1️⃣ Build Microservices
-# =====================================================
-  build:
-    runs-on: ubuntu-latest
-
-    strategy:
-      matrix:
-        service:
-          - order-service
-          - payment-service
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-java@v3
-        with:
-          distribution: temurin
-          java-version: 21
-
-      - name: Build ${{ matrix.service }}
-        run: |
-          cd sbt-kafka-order-payment-stock-service
-          mvn clean package -pl ${{ matrix.service }} -am -DskipTests
-
-      - name: Upload JAR Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.service }}
-          path: sbt-kafka-order-payment-stock-service/${{ matrix.service }}/target/*.jar
-
-
-# =====================================================
-# 2️⃣ Terraform Infrastructure Provisioning
-# =====================================================
   terraform:
+    name: Terraform Apply
     runs-on: ubuntu-latest
-    needs: build
 
     outputs:
       ec2_ip: ${{ steps.tf_outputs.outputs.ec2_ip }}
-      kafka_brokers: ${{ steps.tf_outputs.outputs.kafka_brokers }}
+      kafka_brokers_tls: ${{ steps.tf_outputs.outputs.kafka_brokers_tls }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-      # Configure IAM user credentials
-      - name: Configure AWS credentials
+      - name: Configure AWS Credentials (IAM User)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
+          aws-region: ${{ env.AWS_REGION }}
 
-      # Debug: verify IAM identity
-      - name: Verify AWS Identity
-        run: aws sts get-caller-identity
-
-      - uses: hashicorp/setup-terraform@v3
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
 
       - name: Terraform Init
-        working-directory: sbt-kafka-order-payment-stock-service/terraform
+        working-directory: terraform
         run: terraform init
 
-      - name: Terraform Validate
-        working-directory: sbt-kafka-order-payment-stock-service/terraform
-        run: terraform validate
-
-      - name: Terraform Plan
-        working-directory: sbt-kafka-order-payment-stock-service/terraform
-        run: |
-          terraform plan \
-            -var-file=${{ env.ENVIRONMENT }}/terraform.tfvars \
-            -out=tfplan
-
       - name: Terraform Apply
-        working-directory: sbt-kafka-order-payment-stock-service/terraform
-        run: terraform apply -auto-approve tfplan
+        working-directory: terraform
+        run: terraform apply -auto-approve
 
       - name: Get Terraform Outputs
         id: tf_outputs
-        working-directory: sbt-kafka-order-payment-stock-service/terraform
+        working-directory: terraform
         run: |
           echo "ec2_ip=$(terraform output -raw ec2_public_ip)" >> $GITHUB_OUTPUT
-          echo "kafka_brokers=$(terraform output -raw kafka_bootstrap_brokers)" >> $GITHUB_OUTPUT
+          echo "kafka_brokers_tls=$(terraform output -raw kafka_bootstrap_brokers_tls)" >> $GITHUB_OUTPUT
 
 
-# =====================================================
-# 3️⃣ Deploy Microservices to EC2
-# =====================================================
-  deploy:
+# ==========================================================
+# 2️⃣ Build Spring Boot Services
+# ==========================================================
+  build:
+    name: Build Services
     runs-on: ubuntu-latest
     needs: terraform
 
@@ -116,22 +66,58 @@ jobs:
           - payment-service
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-      # Download JAR artifact from build
-      - name: Download JAR Artifact
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Build ${{ matrix.service }}
+        working-directory: ${{ matrix.service }}
+        run: mvn clean package -DskipTests
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.service }}
+          path: ${{ matrix.service }}/target/*.jar
+
+
+# ==========================================================
+# 3️⃣ Deploy to EC2
+# ==========================================================
+  deploy:
+    name: Deploy Services
+    runs-on: ubuntu-latest
+    needs: [terraform, build]
+
+    strategy:
+      matrix:
+        service:
+          - order-service
+          - payment-service
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Download Artifact
         uses: actions/download-artifact@v4
         with:
           name: ${{ matrix.service }}
           path: .
 
-      - name: Deploy ${{ matrix.service }}
+      - name: Deploy ${{ matrix.service }} to EC2
         env:
           EC2_HOST: ${{ needs.terraform.outputs.ec2_ip }}
           EC2_USER: ${{ secrets.EC2_USER }}
           EC2_KEY:  ${{ secrets.EC2_KEY }}
           SERVICE:  ${{ matrix.service }}
-          KAFKA_BROKERS: ${{ needs.terraform.outputs.kafka_brokers }}
+          KAFKA_BROKERS: ${{ needs.terraform.outputs.kafka_brokers_tls }}
+
         run: |
           echo "$EC2_KEY" > key.pem
           chmod 600 key.pem
@@ -139,20 +125,21 @@ jobs:
           JAR=$(ls *.jar | head -n 1)
           echo "🚀 Deploying $SERVICE to $EC2_HOST"
 
+          # Copy JAR
           scp -i key.pem -o StrictHostKeyChecking=no "$JAR" $EC2_USER@$EC2_HOST:/home/$EC2_USER/
 
+          # SSH Configuration
           ssh -i key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST << EOF
           set -e
 
           sudo mkdir -p /opt/$SERVICE
           sudo chown -R $EC2_USER:$EC2_USER /opt/$SERVICE
 
-          # Create environment file
+          # Write Kafka TLS broker to .env
           echo "KAFKA_BOOTSTRAP_SERVERS=$KAFKA_BROKERS" | sudo tee /opt/$SERVICE/.env
 
-          # Create systemd service if not exists
-          if [ ! -f /etc/systemd/system/$SERVICE.service ]; then
-            sudo tee /etc/systemd/system/$SERVICE.service > /dev/null << EOL
+          # Create systemd service
+          sudo tee /etc/systemd/system/$SERVICE.service > /dev/null << EOL
           [Unit]
           Description=$SERVICE
           After=network.target
@@ -160,6 +147,7 @@ jobs:
           [Service]
           User=$EC2_USER
           WorkingDirectory=/opt/$SERVICE
+          EnvironmentFile=/opt/$SERVICE/.env
           ExecStart=/usr/bin/java -Xms512m -Xmx1g -jar /opt/$SERVICE/$SERVICE.jar
           Restart=always
 
@@ -167,12 +155,12 @@ jobs:
           WantedBy=multi-user.target
           EOL
 
-            sudo systemctl daemon-reload
-            sudo systemctl enable $SERVICE
-          fi
+                    sudo systemctl daemon-reload
+                    sudo systemctl enable $SERVICE
 
-          sudo systemctl stop $SERVICE || true
-          mv /home/$EC2_USER/*.jar /opt/$SERVICE/$SERVICE.jar
-          sudo systemctl restart $SERVICE
-          sudo systemctl status $SERVICE --no-pager
+                    # Move new JAR
+                    mv /home/$EC2_USER/*.jar /opt/$SERVICE/$SERVICE.jar
+
+                    sudo systemctl restart $SERVICE
+                    sudo systemctl status $SERVICE --no-pager
           EOF
