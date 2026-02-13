@@ -35,13 +35,17 @@ jobs:
         id: set-matrix
         run: |
           echo "Looking for changes in services..."
-          CHANGED_SERVICES=$(git diff --name-only HEAD^ HEAD ${{ env.PROJECT_DIR }}/ | grep -E 'order-service|payment-service|stock-service' | awk -F'/' '{print $2}' | sort -u | tr '\n' ',' | sed 's/,$//')
+          CHANGED_SERVICES=$(git diff --name-only HEAD^ HEAD ${{ env.PROJECT_DIR }}/ | grep -E 'order-service|payment-service|stock-service' | awk -F'/' '{print $2}' | sort -u)
           if [ -z "$CHANGED_SERVICES" ]; then
             echo "No service changes detected, defaulting to all"
-            CHANGED_SERVICES="order-service,payment-service,stock-service"
+            CHANGED_SERVICES="order-service payment-service stock-service"
           fi
-          echo "Changed services: $CHANGED_SERVICES"
-          echo "::set-output name=services::$CHANGED_SERVICES"
+
+          # Convert space-separated to JSON array
+          JSON_ARRAY=$(echo $CHANGED_SERVICES | jq -R 'split(" ")')
+          echo "JSON array: $JSON_ARRAY"
+
+          echo "::set-output name=services::$JSON_ARRAY"
 
 # ==========================================================
 # 2️⃣ Build Changed Services (Matrix)
@@ -53,7 +57,7 @@ jobs:
 
     strategy:
       matrix:
-        service: ${{ fromJson('["' + needs.detect-changes.outputs.services + '"]') }}
+        service: ${{ fromJSON(needs.detect-changes.outputs.services) }}
 
     defaults:
       run:
@@ -137,7 +141,7 @@ jobs:
 
     strategy:
       matrix:
-        service: ${{ fromJson('["' + needs.detect-changes.outputs.services + '"]') }}
+        service: ${{ fromJSON(needs.detect-changes.outputs.services) }}
 
     steps:
       - name: Checkout Code
