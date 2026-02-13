@@ -45,12 +45,16 @@ jobs:
 
       - name: Build ${{ matrix.service }}
         run: |
+          echo "Building ${{ matrix.service }}..."
           mvn clean package -pl ${{ matrix.service }} -am -DskipTests
-          JAR=$(ls ${{ matrix.service }}/target/*.jar | grep -v original | head -n 1)
-          if [ ! -f "$JAR" ]; then
-            echo "❌ JAR not found for ${{ matrix.service }}"
+
+          # Locate the JAR
+          JAR=$(ls ${{ matrix.service }}/target/*.jar 2>/dev/null | grep -v original | head -n 1)
+          if [ -z "$JAR" ] || [ ! -f "$JAR" ]; then
+            echo "❌ JAR not found for ${{ matrix.service }} in ${{ matrix.service }}/target/"
             exit 1
           fi
+
           echo "✅ Built $JAR"
 
   # =====================================================
@@ -135,11 +139,12 @@ jobs:
           chmod 600 key.pem
 
           # Get the JAR from correct directory
-          JAR=$(ls $PROJECT_DIR/$SERVICE/target/*.jar | grep -v original | head -n 1)
-          if [ ! -f "$JAR" ]; then
-            echo "❌ JAR not found at $JAR"
+          JAR=$(ls $PROJECT_DIR/$SERVICE/target/*.jar 2>/dev/null | grep -v original | head -n 1)
+          if [ -z "$JAR" ] || [ ! -f "$JAR" ]; then
+            echo "❌ JAR not found for $SERVICE at $PROJECT_DIR/$SERVICE/target/"
             exit 1
           fi
+
 
           echo "🚀 Deploying $SERVICE to $EC2_HOST"
 
