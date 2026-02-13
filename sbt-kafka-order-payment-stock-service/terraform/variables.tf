@@ -16,12 +16,6 @@ variable "key_name" {
   type        = string
 }
 
-variable "profile" {
-  description = "Name of the profile"
-  type        = string
-  default     = "devops"
-}
-
 variable "kafka_broker_count" {
   description = "Name broker count for MSK cluster"
   type        = number

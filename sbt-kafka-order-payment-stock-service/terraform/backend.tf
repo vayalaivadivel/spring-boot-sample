@@ -5,7 +5,6 @@ terraform {
     bucket  = "vadivel-tf-state-buc"
     key     = "ec2-msk-cluster/terraform.tfstate"
     region  = "us-east-1"
-    profile = "devops"
     encrypt = true
   }
 }
