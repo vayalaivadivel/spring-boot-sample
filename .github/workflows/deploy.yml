@@ -43,6 +43,13 @@ jobs:
           distribution: temurin
           java-version: 21
 
+      - name: Debug repo structure
+        run: |
+          echo "Current directory:"
+          pwd
+          echo "Listing root:"
+          ls -la
+
       - name: Build ${{ matrix.service }}
         run: |
           echo "Building ${{ matrix.service }}..."
