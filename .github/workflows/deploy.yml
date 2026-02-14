@@ -56,87 +56,9 @@ jobs:
           mkdir -p artifact
           cp "$JAR" artifact/${{ matrix.service }}.jar
           echo "✅ Built and copied: ${{ matrix.service }}.jar"
-
-  # =====================================================
-  # 2️⃣ Terraform Infrastructure
-  # =====================================================
-  terraform:
-    runs-on: ubuntu-latest
-    needs: build
-    outputs:
-      ec2_ip: ${{ steps.tf_outputs.outputs.ec2_ip }}
-      kafka_bootstrap: ${{ steps.tf_outputs.outputs.kafka_bootstrap }}
-    defaults:
-      run:
-        working-directory: ${{ env.PROJECT_DIR }}/terraform
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-
-      - name: Terraform Init & Apply
-        run: |
-          terraform init
-          terraform validate
-          terraform plan -var-file=${{ env.ENVIRONMENT }}/terraform.tfvars -out=tfplan
-          terraform apply -auto-approve tfplan
-
-      - name: Get Terraform Outputs
-        id: tf_outputs
-        run: |
-          echo "ec2_ip=$(terraform output -raw ec2_public_ip)" >> $GITHUB_OUTPUT
-          echo "kafka_bootstrap=$(terraform output -raw kafka_bootstrap_brokers)" >> $GITHUB_OUTPUT
-
-  # =====================================================
-  # 3️⃣ Verify Artifacts (Matrix)
-  # =====================================================
-  deploy-verify-artifacts:
-    runs-on: ubuntu-latest
-    needs: [build, terraform]
-    strategy:
-      matrix:
-        service:
-          - order-service
-    defaults:
-      run:
-        working-directory: ${{ env.PROJECT_DIR }}
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Download artifact for ${{ matrix.service }}
-        uses: actions/download-artifact@v4
+      - name: Upload Artifact for ${{ matrix.service }}
+        uses: actions/upload-artifact@v3
         with:
           name: ${{ matrix.service }}-jar
-          path: ./artifact
-
-      - name: Debug downloaded artifact
-        run: |
-          echo "Listing all files in current dir:"
-          pwd
-          find . -type f
-
-      - name: Verify artifact
-        run: |
-          echo "===== Verifying artifact for service: ${{ matrix.service }} ====="
-          FILE=$(find artifact -maxdepth 1 -name "${{ matrix.service }}*.jar" | head -n 1)
-          if [ -f "$FILE" ]; then
-            echo "✅ Artifact found: $FILE"
-            ls -lh "$FILE"
-          else
-            echo "❌ Artifact not found!"
-            echo "Contents of artifact folder:"
-            ls -la artifact || true
-            exit 1
-          fi
+          path: ${{ env.PROJECT_DIR }}/artifact/${{ matrix.service }}.jar
+  
