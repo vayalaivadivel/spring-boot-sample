@@ -132,5 +132,5 @@ jobs:
 
     - name: Show downloaded JAR
       run: |
-        echo "📦 Downloaded ${{ matrix.service }} JAR:"
+        echo "📦 Downloaded order-service JAR:"
         ls -l artifact/
