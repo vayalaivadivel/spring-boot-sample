@@ -56,11 +56,19 @@ jobs:
           mkdir -p artifact
           cp "$JAR" artifact/${{ matrix.service }}.jar
           echo "✅ Built and copied: ${{ matrix.service }}.jar"
+
       - name: Upload Artifact for ${{ matrix.service }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.service }}-jar
           path: ${{ env.PROJECT_DIR }}/artifact/${{ matrix.service }}.jar
+      
+      - name: Show uploaded artifact path
+        run: |
+          echo "📦 Uploaded artifact name: ${{ matrix.service }}-jar"
+          echo "🛠 Local artifact path: ${{ env.PROJECT_DIR }}/artifact/${{ matrix.service }}.jar"
+
+
   # =====================================================
   # 2️⃣ Terraform Infrastructure
   # =====================================================
@@ -116,12 +124,15 @@ jobs:
         working-directory: ${{ env.PROJECT_DIR }}
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    - name: Download JAR for ${{ matrix.service }}
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ matrix.service }}-jar
+        path: artifact/
 
-      - name: Download all JARs artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: microservices-jars
-          path: artifact
+    - name: Show downloaded JAR
+      run: |
+        echo "📦 Downloaded ${{ matrix.service }} JAR:"
+        ls -l artifact/
+
   
