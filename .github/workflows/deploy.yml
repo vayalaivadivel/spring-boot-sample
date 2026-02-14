@@ -1,4 +1,4 @@
-name: Deploy Microservices to EC2 with Terraform
+name: Deploy Microservices to EC2 (No SSL Validation)
 
 on:
   push:
@@ -17,23 +17,71 @@ env:
 
 jobs:
 
-# =====================================================
-# 1️⃣ Terraform Infrastructure
-# =====================================================
-  terraform:
-    name: Terraform Apply
+  # =====================================================
+  # 1️⃣ Build Microservices
+  # =====================================================
+  build:
     runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        service:
+          - order-service
 
     defaults:
       run:
-        working-directory: ${{ env.PROJECT_DIR }}/terraform
+        working-directory: ${{ env.PROJECT_DIR }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v3
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Debug repo structure
+        run: |
+          echo "Current directory: $(pwd)"
+          echo "Listing root:"
+          ls -la
+
+      - name: Build ${{ matrix.service }}
+        run: |
+          echo "Building ${{ matrix.service }}..."
+          mvn clean package -pl ${{ matrix.service }} -am -DskipTests
+
+          # Find the JAR
+          JAR=$(find ${{ matrix.service }}/target -name "*.jar" ! -name "original*" | head -n 1)
+          if [ -z "$JAR" ]; then
+            echo "❌ JAR not found for ${{ matrix.service }}"
+            exit 1
+          fi
+
+          echo "JAR_PATH=$JAR" >> $GITHUB_ENV
+          echo "✅ Built $JAR"
+
+  # =====================================================
+  # 2️⃣ Terraform Infrastructure Provisioning
+  # =====================================================
+  terraform:
+    name: Terraform Apply
+    runs-on: ubuntu-latest
+    needs: build
 
     outputs:
       ec2_ip: ${{ steps.tf_outputs.outputs.ec2_ip }}
       kafka_brokers_tls: ${{ steps.tf_outputs.outputs.kafka_brokers_tls }}
 
+    defaults:
+      run:
+        working-directory: ${{ env.PROJECT_DIR }}/terraform
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -42,12 +90,20 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - uses: hashicorp/setup-terraform@v3
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
 
-      - run: terraform init
-      - run: terraform validate
-      - run: terraform plan -var-file=${{ env.ENVIRONMENT }}/terraform.tfvars -out=tfplan
-      - run: terraform apply -auto-approve tfplan
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        run: terraform plan -var-file=${{ env.ENVIRONMENT }}/terraform.tfvars -out=tfplan
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve tfplan
 
       - name: Get Terraform Outputs
         id: tf_outputs
@@ -55,12 +111,10 @@ jobs:
           echo "ec2_ip=$(terraform output -raw ec2_public_ip)" >> $GITHUB_OUTPUT
           echo "kafka_brokers_tls=$(terraform output -raw kafka_bootstrap_brokers_tls)" >> $GITHUB_OUTPUT
 
-
-# =====================================================
-# 2️⃣ Build & Deploy Microservices (Matrix)
-# =====================================================
+  # =====================================================
+  # 3️⃣ Deploy Microservices to EC2
+  # =====================================================
   deploy:
-    name: Build & Deploy Microservices
     runs-on: ubuntu-latest
     needs: terraform
 
@@ -68,37 +122,16 @@ jobs:
       matrix:
         service:
           - order-service
-          # Add more services here
 
     defaults:
       run:
         working-directory: ${{ env.PROJECT_DIR }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Setup Java 21
-        uses: actions/setup-java@v3
-        with:
-          distribution: temurin
-          java-version: 21
-
-      - name: Build ${{ matrix.service }}
-        run: |
-          echo "🔨 Building ${{ matrix.service }}..."
-          mvn -B clean package -pl ${{ matrix.service }} -am -DskipTests
-
-          JAR=$(find ${{ matrix.service }}/target -name "*.jar" ! -name "original*" | head -n 1)
-
-          if [ -z "$JAR" ]; then
-            echo "❌ JAR not found for ${{ matrix.service }}"
-            exit 1
-          fi
-
-          echo "✅ Built JAR: $JAR"
-          echo "JAR_PATH=$JAR" >> $GITHUB_ENV
-
-      - name: Deploy ${{ matrix.service }} to EC2
+      - name: Deploy ${{ matrix.service }}
         env:
           EC2_HOST: ${{ needs.terraform.outputs.ec2_ip }}
           EC2_USER: ${{ secrets.EC2_USER }}
@@ -111,55 +144,48 @@ jobs:
           echo "$EC2_KEY" > key.pem
           chmod 600 key.pem
 
-          echo "🚀 Deploying $SERVICE to $EC2_HOST"
-          scp -i key.pem -o StrictHostKeyChecking=no "$JAR_PATH" $EC2_USER@$EC2_HOST:/home/$EC2_USER/$SERVICE.jar
-
-          ssh -i key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST bash -s << DEPLOY_EOF
-          set -e
-
-          SERVICE="$SERVICE"
-          EC2_USER="$EC2_USER"
-          KAFKA_BROKERS_TLS="$KAFKA_BROKERS_TLS"
-
-          # Create app directory
-          sudo mkdir -p /opt/$SERVICE
-          sudo chown -R $EC2_USER:$EC2_USER /opt/$SERVICE
-
-          # Set environment variables
-          echo "KAFKA_BOOTSTRAP_SERVERS_TLS=$KAFKA_BROKERS_TLS" | sudo tee /opt/$SERVICE/.env > /dev/null
-
-          # Create systemd service if not exists
-          if [ ! -f /etc/systemd/system/$SERVICE.service ]; then
-          sudo tee /etc/systemd/system/$SERVICE.service > /dev/null << SYSTEMD_EOF
-          [Unit]
-          Description=$SERVICE
-          After=network.target
-
-          [Service]
-          User=$EC2_USER
-          WorkingDirectory=/opt/$SERVICE
-          EnvironmentFile=/opt/$SERVICE/.env
-          ExecStart=/usr/bin/java -Xms512m -Xmx1g -jar /opt/$SERVICE/$SERVICE.jar
-          Restart=always
-          SuccessExitStatus=143
-
-          [Install]
-          WantedBy=multi-user.target
-          SYSTEMD_EOF
-
-          sudo systemctl daemon-reload
-          sudo systemctl enable $SERVICE
+          echo "🔍 Searching JAR for $SERVICE..."
+          JAR=$(find $SERVICE/target -name "*.jar" ! -name "original*" | head -n 1)
+          if [ -z "$JAR" ]; then
+            echo "❌ JAR not found for $SERVICE"
+            exit 1
           fi
+          echo "✅ Found JAR: $JAR"
+          echo "🚀 Deploying $SERVICE to $EC2_HOST"
 
-          # Stop service if running, move new JAR, start service
-          sudo systemctl stop $SERVICE || true
-          mv /home/$EC2_USER/$SERVICE.jar /opt/$SERVICE/$SERVICE.jar
-          sudo systemctl start $SERVICE
-          sudo systemctl status $SERVICE --no-pager
-          DEPLOY_EOF
+          # Copy JAR to EC2
+          scp -i key.pem -o StrictHostKeyChecking=no "$JAR" $EC2_USER@$EC2_HOST:/opt/$SERVICE/$SERVICE.jar
 
-      - name: Show Deployment Info
-        run: |
-          echo "🚀 Deployment Details:"
-          echo "EC2 IP: ${{ needs.terraform.outputs.ec2_ip }}"
-          echo "Kafka Brokers TLS: ${{ needs.terraform.outputs.kafka_brokers_tls }}"
+          # SSH and start systemd service
+          ssh -i key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST << EOF
+            set -e
+            sudo mkdir -p /opt/$SERVICE
+            sudo chown -R $EC2_USER:$EC2_USER /opt/$SERVICE
+
+            echo "KAFKA_BOOTSTRAP_SERVERS_TLS=$KAFKA_BROKERS_TLS" | sudo tee /opt/$SERVICE/.env
+
+            if [ ! -f /etc/systemd/system/$SERVICE.service ]; then
+              sudo tee /etc/systemd/system/$SERVICE.service > /dev/null << EOL
+            [Unit]
+            Description=$SERVICE
+            After=network.target
+
+            [Service]
+            User=$EC2_USER
+            WorkingDirectory=/opt/$SERVICE
+            EnvironmentFile=/opt/$SERVICE/.env
+            ExecStart=/usr/bin/java -Xms512m -Xmx1g -jar /opt/$SERVICE/$SERVICE.jar
+            Restart=always
+            SuccessExitStatus=143
+
+            [Install]
+            WantedBy=multi-user.target
+            EOL
+              sudo systemctl daemon-reload
+              sudo systemctl enable $SERVICE
+            fi
+
+            sudo systemctl stop $SERVICE || true
+            sudo systemctl start $SERVICE
+            sudo systemctl status $SERVICE --no-pager
+            EOF
