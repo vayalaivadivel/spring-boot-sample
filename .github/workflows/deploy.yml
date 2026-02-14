@@ -18,7 +18,7 @@ env:
 jobs:
 
   # =====================================================
-  # 1️⃣ Build All Microservices (Single Job)
+  # 1️⃣ Build All Services
   # =====================================================
   build:
     runs-on: ubuntu-latest
@@ -37,15 +37,10 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - name: Debug repo structure
-        run: |
-          echo "Current dir: $(pwd)"
-          ls -la
-
       - name: Build all services
         run: |
-          SERVICES=("order-service")  # Add all services here
           mkdir -p ./artifacts
+          SERVICES=("order-service")  # Only real modules
           for SERVICE in "${SERVICES[@]}"; do
             echo "Building $SERVICE..."
             mvn clean package -pl $SERVICE -am -DskipTests
@@ -55,9 +50,13 @@ jobs:
               echo "❌ JAR not found for $SERVICE"
               exit 1
             fi
+
             echo "✅ Built $SERVICE: $JAR"
             cp "$JAR" ./artifacts/
           done
+
+      - name: List artifacts
+        run: ls -la ./artifacts
 
       - name: Upload all JARs
         uses: actions/upload-artifact@v4
@@ -117,8 +116,7 @@ jobs:
     strategy:
       matrix:
         service:
-          - order-service
-          - other-service  # Add all services here
+          - order-service  # Add more services here
 
     defaults:
       run:
@@ -198,4 +196,4 @@ jobs:
             echo "EC2 IP: $EC2_HOST"
             echo "Kafka Brokers TLS: $KAFKA_BROKERS_TLS"
             echo "========================"
-            EOF
+          EOF
