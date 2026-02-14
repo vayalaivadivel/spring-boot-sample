@@ -1,4 +1,4 @@
-name: Deploy Microservices to EC2 (Matrix Deploy) and terraform
+name: Deploy Microservices to EC2 (Matrix Deploy)
 
 on:
   push:
@@ -18,7 +18,7 @@ env:
 jobs:
 
   # =====================================================
-  # 1️⃣ Build Microservices (Matrix)
+  # 1️⃣ Build All Services (Matrix)
   # =====================================================
   build:
     runs-on: ubuntu-latest
@@ -27,7 +27,7 @@ jobs:
       matrix:
         service:
           - order-service
-          # Add more services here
+          # Add other services here, e.g., "payment-service", "stock-service"
 
     defaults:
       run:
@@ -48,7 +48,10 @@ jobs:
           echo "🔨 Building ${{ matrix.service }}..."
           mvn clean package -pl ${{ matrix.service }} -am -DskipTests
 
-          # Find JAR
+          # Create artifact folder
+          mkdir -p artifact
+
+          # Find the built JAR
           JAR_FILE=$(find ${{ matrix.service }}/target -maxdepth 1 -name "*.jar" ! -name "*original*" | head -n 1)
           if [ -z "$JAR_FILE" ]; then
             echo "❌ JAR not found for ${{ matrix.service }}"
@@ -57,16 +60,13 @@ jobs:
           fi
 
           echo "✅ Found JAR: $JAR_FILE"
-
-          # Copy to temp artifact folder
-          mkdir -p ./artifact
-          cp "$JAR_FILE" ./artifact/
+          cp "$JAR_FILE" artifact/
 
       - name: Upload ${{ matrix.service }} JAR
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.service }}-jar
-          path: ./artifact/*.jar
+          path: artifact/*.jar
           if-no-files-found: error
 
   # =====================================================
@@ -75,12 +75,15 @@ jobs:
   terraform:
     runs-on: ubuntu-latest
     needs: build
+
     outputs:
       ec2_ip: ${{ steps.tf_outputs.outputs.ec2_ip }}
       kafka_brokers_tls: ${{ steps.tf_outputs.outputs.kafka_brokers_tls }}
+
     defaults:
       run:
         working-directory: ${{ env.PROJECT_DIR }}/terraform
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -119,7 +122,7 @@ jobs:
       matrix:
         service:
           - order-service
-          # Add more services here
+          # Add other services here
 
     defaults:
       run:
@@ -129,13 +132,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Download JAR artifact for ${{ matrix.service }}
+      - name: Download ${{ matrix.service }} JAR artifact
         uses: actions/download-artifact@v4
         with:
           name: ${{ matrix.service }}-jar
-          path: ./artifact
+          path: artifact
 
-      - name: Deploy ${{ matrix.service }} to EC2
+      - name: Deploy ${{ matrix.service }}
         env:
           EC2_HOST: ${{ needs.terraform.outputs.ec2_ip }}
           EC2_USER: ${{ secrets.EC2_USER }}
@@ -144,14 +147,18 @@ jobs:
           KAFKA_BROKERS_TLS: ${{ needs.terraform.outputs.kafka_brokers_tls }}
         run: |
           set -e
+
           echo "$EC2_KEY" > key.pem
           chmod 600 key.pem
 
-          JAR=$(find ./artifact -name "${SERVICE}*.jar" | head -n 1)
+          # Get the downloaded JAR
+          JAR=$(find artifact -maxdepth 1 -name "${SERVICE}*.jar" | head -n 1)
           if [ -z "$JAR" ]; then
-            echo "❌ JAR not found for $SERVICE"
+            echo "❌ JAR not found for $SERVICE in artifact"
+            ls -la artifact
             exit 1
           fi
+
           echo "✅ Found JAR: $JAR"
           echo "🚀 Deploying $SERVICE to $EC2_HOST"
 
@@ -159,7 +166,7 @@ jobs:
           ssh -i key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST "mkdir -p /opt/$SERVICE"
           scp -i key.pem -o StrictHostKeyChecking=no "$JAR" $EC2_USER@$EC2_HOST:/opt/$SERVICE/$SERVICE.jar
 
-          # SSH into EC2 to deploy service
+          # SSH to configure systemd and environment
           ssh -i key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST << EOF
             set -e
             sudo chown -R $EC2_USER:$EC2_USER /opt/$SERVICE
@@ -182,6 +189,7 @@ jobs:
             [Install]
             WantedBy=multi-user.target
             EOL
+
               sudo systemctl daemon-reload
               sudo systemctl enable $SERVICE
             fi
@@ -190,7 +198,8 @@ jobs:
             sudo systemctl start $SERVICE
             sudo systemctl status $SERVICE --no-pager
 
-            # Show EC2 & Kafka info
+            # Debug info
+            echo ""
             echo "========================"
             echo "Service: $SERVICE"
             echo "EC2 IP: $EC2_HOST"
