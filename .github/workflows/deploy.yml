@@ -171,7 +171,8 @@ jobs:
           ssh -i key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST << EOF
             set -e
             sudo chown -R $EC2_USER:$EC2_USER /opt/$SERVICE
-            echo "KAFKA_BOOTSTRAP_SERVERS_TLS=$KAFKA_BROKERS_TLS" | sudo tee /opt/$SERVICE/.env > /dev/null
+            # Correct environment variable name to match application.yml
+            echo "KAFKA_BOOTSTRAP_SERVERS=$KAFKA_BROKERS_TLS" | sudo tee /opt/$SERVICE/.env > /dev/null
 
             if [ ! -f /etc/systemd/system/$SERVICE.service ]; then
               sudo tee /etc/systemd/system/$SERVICE.service > /dev/null << EOL
