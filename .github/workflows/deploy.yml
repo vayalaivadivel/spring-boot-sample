@@ -46,16 +46,20 @@ jobs:
       - name: Build ${{ matrix.service }}
         run: |
           echo "Building ${{ matrix.service }}..."
-          mvn clean package -pl ${{ matrix.service }} -am -DskipTests
 
-          # Locate the JAR
-          JAR=$(ls ${{ matrix.service }}/target/*.jar 2>/dev/null | grep -v original | head -n 1)
-          if [ -z "$JAR" ] || [ ! -f "$JAR" ]; then
-            echo "❌ JAR not found for ${{ matrix.service }} in ${{ matrix.service }}/target/"
+          mvn -B -f $PROJECT_DIR/pom.xml clean package \
+              -pl ${{ matrix.service }} -am -DskipTests
+
+          JAR=$(find $PROJECT_DIR/${{ matrix.service }}/target \
+                -name "*.jar" ! -name "original*" | head -n 1)
+
+          if [ -z "$JAR" ]; then
+            echo "❌ JAR not found for ${{ matrix.service }}"
             exit 1
           fi
 
           echo "✅ Built $JAR"
+
 
   # =====================================================
   # 2️⃣ Terraform Infrastructure Provisioning
