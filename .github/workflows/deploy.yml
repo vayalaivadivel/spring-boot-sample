@@ -1,4 +1,4 @@
-name: Deploy Microservices to EC2 (Matrix Workflow)
+name: Deploy Microservices to EC2 (Matrix Deploy) and terraform
 
 on:
   push:
@@ -18,20 +18,23 @@ env:
 jobs:
 
   # =====================================================
-  # 1️⃣ Build Microservices
+  # 1️⃣ Build Microservices (Matrix)
   # =====================================================
   build:
     runs-on: ubuntu-latest
+
     strategy:
       matrix:
         service:
           - order-service
           # Add more services here
+
     defaults:
       run:
         working-directory: ${{ env.PROJECT_DIR }}
+
     steps:
-      - name: Checkout Code
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Setup Java 21
@@ -42,25 +45,28 @@ jobs:
 
       - name: Build ${{ matrix.service }}
         run: |
-          echo "🔹 Building ${{ matrix.service }}..."
+          echo "🔨 Building ${{ matrix.service }}..."
           mvn clean package -pl ${{ matrix.service }} -am -DskipTests
 
-          # Find the actual JAR produced by Spring Boot
+          # Find JAR
           JAR_FILE=$(find ${{ matrix.service }}/target -maxdepth 1 -name "*.jar" ! -name "*original*" | head -n 1)
-
           if [ -z "$JAR_FILE" ]; then
             echo "❌ JAR not found for ${{ matrix.service }}"
             ls -la ${{ matrix.service }}/target
             exit 1
           fi
 
-          echo "✅ Built ${{ matrix.service }}: $JAR_FILE"
+          echo "✅ Found JAR: $JAR_FILE"
+
+          # Copy to temp artifact folder
+          mkdir -p ./artifact
+          cp "$JAR_FILE" ./artifact/
 
       - name: Upload ${{ matrix.service }} JAR
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.service }}-jar
-          path: $JAR_FILE
+          path: ./artifact/*.jar
           if-no-files-found: error
 
   # =====================================================
@@ -76,7 +82,7 @@ jobs:
       run:
         working-directory: ${{ env.PROJECT_DIR }}/terraform
     steps:
-      - name: Checkout Code
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Configure AWS Credentials
@@ -108,25 +114,28 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: [build, terraform]
+
     strategy:
       matrix:
         service:
           - order-service
           # Add more services here
+
     defaults:
       run:
         working-directory: ${{ env.PROJECT_DIR }}
+
     steps:
-      - name: Checkout Code
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Download Artifact
+      - name: Download JAR artifact for ${{ matrix.service }}
         uses: actions/download-artifact@v4
         with:
           name: ${{ matrix.service }}-jar
           path: ./artifact
 
-      - name: Deploy ${{ matrix.service }}
+      - name: Deploy ${{ matrix.service }} to EC2
         env:
           EC2_HOST: ${{ needs.terraform.outputs.ec2_ip }}
           EC2_USER: ${{ secrets.EC2_USER }}
@@ -138,19 +147,19 @@ jobs:
           echo "$EC2_KEY" > key.pem
           chmod 600 key.pem
 
-          JAR_FILE=$(find ./artifact -maxdepth 1 -name "${SERVICE}*.jar" | head -n 1)
-          if [ -z "$JAR_FILE" ]; then
-            echo "❌ Artifact not found for $SERVICE"
+          JAR=$(find ./artifact -name "${SERVICE}*.jar" | head -n 1)
+          if [ -z "$JAR" ]; then
+            echo "❌ JAR not found for $SERVICE"
             exit 1
           fi
-          echo "✅ Found artifact: $JAR_FILE"
+          echo "✅ Found JAR: $JAR"
           echo "🚀 Deploying $SERVICE to $EC2_HOST"
 
           # Copy JAR to EC2
           ssh -i key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST "mkdir -p /opt/$SERVICE"
-          scp -i key.pem -o StrictHostKeyChecking=no "$JAR_FILE" $EC2_USER@$EC2_HOST:/opt/$SERVICE/$SERVICE.jar
+          scp -i key.pem -o StrictHostKeyChecking=no "$JAR" $EC2_USER@$EC2_HOST:/opt/$SERVICE/$SERVICE.jar
 
-          # Deploy via systemd and print debug info
+          # SSH into EC2 to deploy service
           ssh -i key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST << EOF
             set -e
             sudo chown -R $EC2_USER:$EC2_USER /opt/$SERVICE
@@ -181,7 +190,7 @@ jobs:
             sudo systemctl start $SERVICE
             sudo systemctl status $SERVICE --no-pager
 
-            echo ""
+            # Show EC2 & Kafka info
             echo "========================"
             echo "Service: $SERVICE"
             echo "EC2 IP: $EC2_HOST"
