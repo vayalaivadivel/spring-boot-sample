@@ -1,4 +1,4 @@
-name: Deploy Microservices to EC2 (Matrix Deploy)
+name: Deploy Microservices to EC2 (Matrix)
 
 on:
   push:
@@ -18,17 +18,10 @@ env:
 jobs:
 
   # =====================================================
-  # 1️⃣ Build All Services (Matrix)
+  # 1️⃣ Build All Services and Upload Artifacts
   # =====================================================
   build:
     runs-on: ubuntu-latest
-
-    strategy:
-      matrix:
-        service:
-          - order-service
-          # Add other services here, e.g., "payment-service", "stock-service"
-
     defaults:
       run:
         working-directory: ${{ env.PROJECT_DIR }}
@@ -43,29 +36,33 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - name: Build ${{ matrix.service }}
+      - name: Build all services
         run: |
-          echo "🔨 Building ${{ matrix.service }}..."
-          mvn clean package -pl ${{ matrix.service }} -am -DskipTests
-
-          # Create artifact folder
           mkdir -p artifact
+          SERVICES=("order-service") # Add more modules here
 
-          # Find the built JAR
-          JAR_FILE=$(find ${{ matrix.service }}/target -maxdepth 1 -name "*.jar" ! -name "*original*" | head -n 1)
-          if [ -z "$JAR_FILE" ]; then
-            echo "❌ JAR not found for ${{ matrix.service }}"
-            ls -la ${{ matrix.service }}/target
-            exit 1
-          fi
+          for SERVICE in "${SERVICES[@]}"; do
+            echo "🔨 Building $SERVICE..."
+            mvn clean package -pl $SERVICE -am -DskipTests
 
-          echo "✅ Found JAR: $JAR_FILE"
-          cp "$JAR_FILE" artifact/
+            # Find the Spring Boot fat JAR
+            JAR=$(find $SERVICE/target -maxdepth 1 -name "*.jar" ! -name "*original*" | head -n 1)
+            if [ -z "$JAR" ]; then
+              echo "❌ JAR not found for $SERVICE"
+              exit 1
+            fi
 
-      - name: Upload ${{ matrix.service }} JAR
+            echo "✅ Built $SERVICE: $JAR"
+            cp "$JAR" artifact/
+          done
+
+      - name: List artifacts
+        run: ls -la artifact
+
+      - name: Upload all JARs
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.service }}-jar
+          name: microservices-jars
           path: artifact/*.jar
           if-no-files-found: error
 
@@ -75,11 +72,9 @@ jobs:
   terraform:
     runs-on: ubuntu-latest
     needs: build
-
     outputs:
       ec2_ip: ${{ steps.tf_outputs.outputs.ec2_ip }}
       kafka_brokers_tls: ${{ steps.tf_outputs.outputs.kafka_brokers_tls }}
-
     defaults:
       run:
         working-directory: ${{ env.PROJECT_DIR }}/terraform
@@ -117,13 +112,10 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: [build, terraform]
-
     strategy:
       matrix:
         service:
-          - order-service
-          # Add other services here
-
+          - order-service # Add more services here
     defaults:
       run:
         working-directory: ${{ env.PROJECT_DIR }}
@@ -132,10 +124,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Download ${{ matrix.service }} JAR artifact
+      - name: Download all JARs artifact
         uses: actions/download-artifact@v4
         with:
-          name: ${{ matrix.service }}-jar
+          name: microservices-jars
           path: artifact
 
       - name: Deploy ${{ matrix.service }}
@@ -147,30 +139,29 @@ jobs:
           KAFKA_BROKERS_TLS: ${{ needs.terraform.outputs.kafka_brokers_tls }}
         run: |
           set -e
-
           echo "$EC2_KEY" > key.pem
           chmod 600 key.pem
 
-          # Get the downloaded JAR
+          echo "🔍 Searching JAR for $SERVICE..."
           JAR=$(find artifact -maxdepth 1 -name "${SERVICE}*.jar" | head -n 1)
           if [ -z "$JAR" ]; then
-            echo "❌ JAR not found for $SERVICE in artifact"
-            ls -la artifact
+            echo "❌ JAR not found for $SERVICE"
             exit 1
           fi
-
           echo "✅ Found JAR: $JAR"
           echo "🚀 Deploying $SERVICE to $EC2_HOST"
 
-          # Copy JAR to EC2
+          # Prepare EC2 directory
           ssh -i key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST "mkdir -p /opt/$SERVICE"
+
+          # Copy JAR to EC2
           scp -i key.pem -o StrictHostKeyChecking=no "$JAR" $EC2_USER@$EC2_HOST:/opt/$SERVICE/$SERVICE.jar
 
-          # SSH to configure systemd and environment
+          # SSH into EC2 to configure systemd and environment
           ssh -i key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST << EOF
             set -e
             sudo chown -R $EC2_USER:$EC2_USER /opt/$SERVICE
-            echo "KAFKA_BOOTSTRAP_SERVERS_TLS=$KAFKA_BROKERS_TLS" | sudo tee /opt/$SERVICE/.env
+            echo "KAFKA_BOOTSTRAP_SERVERS_TLS=$KAFKA_BROKERS_TLS" | sudo tee /opt/$SERVICE/.env > /dev/null
 
             if [ ! -f /etc/systemd/system/$SERVICE.service ]; then
               sudo tee /etc/systemd/system/$SERVICE.service > /dev/null << EOL
@@ -198,7 +189,6 @@ jobs:
             sudo systemctl start $SERVICE
             sudo systemctl status $SERVICE --no-pager
 
-            # Debug info
             echo ""
             echo "========================"
             echo "Service: $SERVICE"
