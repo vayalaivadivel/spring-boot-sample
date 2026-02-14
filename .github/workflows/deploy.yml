@@ -157,3 +157,9 @@ jobs:
           sudo systemctl start $SERVICE
           sudo systemctl status $SERVICE --no-pager
           DEPLOY_EOF
+
+      - name: Show Deployment Info
+        run: |
+          echo "🚀 Deployment Details:"
+          echo "EC2 IP: ${{ needs.terraform.outputs.ec2_ip }}"
+          echo "Kafka Brokers TLS: ${{ needs.terraform.outputs.kafka_brokers_tls }}"
