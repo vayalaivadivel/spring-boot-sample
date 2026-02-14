@@ -1,4 +1,4 @@
-name: Deploy Microservices to EC2 (Matrix Deploy)
+name: Microservices Build & Deploy
 
 on:
   push:
@@ -15,23 +15,20 @@ env:
   PROJECT_DIR: sbt-kafka-order-payment-stock-service
   AWS_REGION: us-east-1
 
+# =====================================================
+# 1️⃣ Build Microservices (Matrix)
+# =====================================================
 jobs:
-
-  # =====================================================
-  # 1️⃣ Build All Services
-  # =====================================================
   build:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ${{ env.PROJECT_DIR }}
-
     strategy:
       matrix:
         service:
           - order-service
-          # Add other services here
-
+          # Add more services here
+    defaults:
+      run:
+        working-directory: ${{ env.PROJECT_DIR }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -44,14 +41,10 @@ jobs:
 
       - name: Build ${{ matrix.service }}
         run: |
-          echo "🔹 Building ${{ matrix.service }}..."
+          echo "Building ${{ matrix.service }}..."
           mvn clean package -pl ${{ matrix.service }} -am -DskipTests
 
-          echo "🔹 Checking target directory..."
-          ls -la ${{ matrix.service }}/target
-
-          JAR=$(find ${{ matrix.service }}/target -name "*.jar" ! -name "original*" | head -n 1)
-
+          JAR=$(find ${{ matrix.service }}/target -name "*.jar" ! -name "*original*" | head -n 1)
           if [ -z "$JAR" ]; then
             echo "❌ JAR not found for ${{ matrix.service }}"
             exit 1
@@ -66,19 +59,18 @@ jobs:
           path: ${{ matrix.service }}/target/*.jar
           if-no-files-found: error
 
-  # =====================================================
-  # 2️⃣ Terraform Infrastructure
-  # =====================================================
+# =====================================================
+# 2️⃣ Terraform Infrastructure
+# =====================================================
   terraform:
     runs-on: ubuntu-latest
     needs: build
-    defaults:
-      run:
-        working-directory: ${{ env.PROJECT_DIR }}/terraform
     outputs:
       ec2_ip: ${{ steps.tf_outputs.outputs.ec2_ip }}
       kafka_brokers_tls: ${{ steps.tf_outputs.outputs.kafka_brokers_tls }}
-
+    defaults:
+      run:
+        working-directory: ${{ env.PROJECT_DIR }}/terraform
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -106,9 +98,9 @@ jobs:
           echo "ec2_ip=$(terraform output -raw ec2_public_ip)" >> $GITHUB_OUTPUT
           echo "kafka_brokers_tls=$(terraform output -raw kafka_bootstrap_brokers_tls)" >> $GITHUB_OUTPUT
 
-  # =====================================================
-  # 3️⃣ Deploy Microservices (Matrix)
-  # =====================================================
+# =====================================================
+# 3️⃣ Deploy Microservices (Matrix)
+# =====================================================
   deploy:
     runs-on: ubuntu-latest
     needs: [build, terraform]
@@ -116,12 +108,10 @@ jobs:
       matrix:
         service:
           - order-service
-          # Add other services here
-
+          # Add more services here
     defaults:
       run:
         working-directory: ${{ env.PROJECT_DIR }}
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -131,9 +121,8 @@ jobs:
         with:
           name: ${{ matrix.service }}-jar
           path: ./artifact
-          if-no-files-found: error
 
-      - name: Deploy ${{ matrix.service }}
+      - name: Deploy ${{ matrix.service }} to EC2
         env:
           EC2_HOST: ${{ needs.terraform.outputs.ec2_ip }}
           EC2_USER: ${{ secrets.EC2_USER }}
@@ -145,9 +134,7 @@ jobs:
           echo "$EC2_KEY" > key.pem
           chmod 600 key.pem
 
-          echo "🔍 Searching JAR for $SERVICE..."
-          JAR=$(find ./artifact -name "${SERVICE}*.jar" ! -name "original*" | head -n 1)
-
+          JAR=$(find ./artifact -name "${SERVICE}*.jar" | head -n 1)
           if [ -z "$JAR" ]; then
             echo "❌ JAR not found for $SERVICE"
             exit 1
@@ -155,42 +142,58 @@ jobs:
           echo "✅ Found JAR: $JAR"
           echo "🚀 Deploying $SERVICE to $EC2_HOST"
 
+          # Copy JAR to EC2
+          ssh -i key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST "mkdir -p /opt/$SERVICE"
+          scp -i key.pem -o StrictHostKeyChecking=no "$JAR" $EC2_USER@$EC2_HOST:/opt/$SERVICE/$SERVICE.jar
+
+          # SSH into EC2 to deploy and check Kafka connectivity
           ssh -i key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST << EOF
             set -e
-            sudo mkdir -p /opt/$SERVICE
             sudo chown -R $EC2_USER:$EC2_USER /opt/$SERVICE
             echo "KAFKA_BOOTSTRAP_SERVERS_TLS=$KAFKA_BROKERS_TLS" | sudo tee /opt/$SERVICE/.env
 
+            # Check Kafka connectivity
+            for BROKER in \$(echo $KAFKA_BROKERS_TLS | tr ',' ' '); do
+              HOST=\$(echo \$BROKER | cut -d':' -f1)
+              PORT=\$(echo \$BROKER | cut -d':' -f2)
+              if ! timeout 5 bash -c "</dev/tcp/\$HOST/\$PORT"; then
+                echo "❌ Cannot connect to Kafka broker: \$BROKER"
+                exit 1
+              fi
+              echo "✅ Connected to broker: \$BROKER"
+            done
+
+            # systemd service setup
             if [ ! -f /etc/systemd/system/$SERVICE.service ]; then
               sudo tee /etc/systemd/system/$SERVICE.service > /dev/null << EOL
-            [Unit]
-            Description=$SERVICE
-            After=network.target
+          [Unit]
+          Description=$SERVICE
+          After=network.target
 
-            [Service]
-            User=$EC2_USER
-            WorkingDirectory=/opt/$SERVICE
-            EnvironmentFile=/opt/$SERVICE/.env
-            ExecStart=/usr/bin/java -Xms512m -Xmx1g -jar /opt/$SERVICE/$SERVICE.jar
-            Restart=always
-            SuccessExitStatus=143
+          [Service]
+          User=$EC2_USER
+          WorkingDirectory=/opt/$SERVICE
+          EnvironmentFile=/opt/$SERVICE/.env
+          ExecStart=/usr/bin/java -Xms512m -Xmx1g -jar /opt/$SERVICE/$SERVICE.jar
+          Restart=always
+          SuccessExitStatus=143
 
-            [Install]
-            WantedBy=multi-user.target
-            EOL
-              sudo systemctl daemon-reload
-              sudo systemctl enable $SERVICE
-            fi
+          [Install]
+          WantedBy=multi-user.target
+          EOL
+                        sudo systemctl daemon-reload
+                        sudo systemctl enable $SERVICE
+                      fi
 
-            sudo systemctl stop $SERVICE || true
-            sudo cp ./artifact/$SERVICE*.jar /opt/$SERVICE/$SERVICE.jar
-            sudo systemctl start $SERVICE
-            sudo systemctl status $SERVICE --no-pager
+                      sudo systemctl stop $SERVICE || true
+                      sudo systemctl start $SERVICE
+                      sudo systemctl status $SERVICE --no-pager
 
-            echo ""
-            echo "========================"
-            echo "Service: $SERVICE"
-            echo "EC2 IP: $EC2_HOST"
-            echo "Kafka Brokers TLS: $KAFKA_BROKERS_TLS"
-            echo "========================"
+                      # Debug info
+                      echo ""
+                      echo "========================"
+                      echo "Service: $SERVICE"
+                      echo "EC2 IP: $EC2_HOST"
+                      echo "Kafka Brokers TLS: $KAFKA_BROKERS_TLS"
+                      echo "========================"
           EOF
