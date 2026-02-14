@@ -209,3 +209,13 @@ jobs:
 
                   # Remove SSH key for security
                   rm -f key.pem
+
+          # Wait and check health
+          sleep 5
+          HEALTH_STATUS=$(curl -s http://$EC2_HOST:8080/actuator/health | jq -r '.status')
+          if [ "$HEALTH_STATUS" = "UP" ]; then
+            echo "✅ $SERVICE is healthy!"
+          else
+            echo "❌ $SERVICE is unhealthy!"
+            curl -s http://$EC2_HOST:8080/actuator/health | jq
+          fi
