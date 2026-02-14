@@ -1,4 +1,4 @@
-name: Deploy Microservices to EC2 (Matrix Build + Deploy)
+name: Deploy Microservices to EC2 (Matrix Deploy)
 
 on:
   push:
@@ -18,16 +18,10 @@ env:
 jobs:
 
   # =====================================================
-  # 1️⃣ Build Microservices (Matrix)
+  # 1️⃣ Build All Microservices (Single Job)
   # =====================================================
   build:
     runs-on: ubuntu-latest
-
-    strategy:
-      matrix:
-        service:
-          - order-service
-          # Add more services here
 
     defaults:
       run:
@@ -43,23 +37,33 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - name: Build ${{ matrix.service }}
+      - name: Debug repo structure
         run: |
-          echo "Building ${{ matrix.service }}..."
-          mvn clean package -pl ${{ matrix.service }} -am -DskipTests
+          echo "Current dir: $(pwd)"
+          ls -la
 
-          JAR=$(find ${{ matrix.service }}/target -name "*.jar" ! -name "original*" | head -n 1)
-          if [ -z "$JAR" ]; then
-            echo "❌ JAR not found for ${{ matrix.service }}"
-            exit 1
-          fi
-          echo "✅ Built JAR: $JAR"
+      - name: Build all services
+        run: |
+          SERVICES=("order-service" "other-service")  # Add all services here
+          mkdir -p ./artifacts
+          for SERVICE in "${SERVICES[@]}"; do
+            echo "Building $SERVICE..."
+            mvn clean package -pl $SERVICE -am -DskipTests
 
-      - name: Upload JAR artifact
+            JAR=$(find $SERVICE/target -name "*.jar" ! -name "original*" | head -n 1)
+            if [ -z "$JAR" ]; then
+              echo "❌ JAR not found for $SERVICE"
+              exit 1
+            fi
+            echo "✅ Built $SERVICE: $JAR"
+            cp "$JAR" ./artifacts/
+          done
+
+      - name: Upload all JARs
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.service }}-jar
-          path: ${{ matrix.service }}/target/*.jar
+          name: microservices-jars
+          path: ./artifacts/*.jar
 
   # =====================================================
   # 2️⃣ Terraform Infrastructure
@@ -104,7 +108,7 @@ jobs:
           echo "kafka_brokers_tls=$(terraform output -raw kafka_bootstrap_brokers_tls)" >> $GITHUB_OUTPUT
 
   # =====================================================
-  # 3️⃣ Deploy Microservices (Matrix) with Debug
+  # 3️⃣ Deploy Microservices (Matrix)
   # =====================================================
   deploy:
     runs-on: ubuntu-latest
@@ -114,7 +118,7 @@ jobs:
       matrix:
         service:
           - order-service
-          # Add more services here
+          - other-service  # Add all services here
 
     defaults:
       run:
@@ -124,10 +128,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Download JAR artifact for ${{ matrix.service }}
+      - name: Download all JARs artifact
         uses: actions/download-artifact@v4
         with:
-          name: ${{ matrix.service }}-jar
+          name: microservices-jars
           path: ./artifact
 
       - name: Deploy ${{ matrix.service }}
