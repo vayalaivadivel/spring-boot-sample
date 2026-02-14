@@ -42,18 +42,20 @@ jobs:
       - name: Build ${{ matrix.service }}
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
+          echo "🔨 Building ${{ matrix.service }}..."
           mvn -pl ${{ matrix.service }} -am clean package -DskipTests
 
+          # Find Spring Boot fat JAR
           JAR=$(find ${{ matrix.service }}/target -maxdepth 1 -name "*.jar" ! -name "*original*" | head -n 1)
-
           if [ -z "$JAR" ]; then
-            echo "❌ JAR not found"
+            echo "❌ JAR not found for ${{ matrix.service }}"
             find . -name "*.jar"
             exit 1
           fi
 
           mkdir -p artifact
           cp "$JAR" artifact/${{ matrix.service }}.jar
+          echo "✅ Built and copied: ${{ matrix.service }}.jar"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -70,7 +72,7 @@ jobs:
     needs: build
     outputs:
       ec2_ip: ${{ steps.tf_outputs.outputs.ec2_ip }}
-      kafka_brokers_tls: ${{ steps.tf_outputs.outputs.kafka_brokers_tls }}
+      kafka_bootstrap: ${{ steps.tf_outputs.outputs.kafka_bootstrap }}
     defaults:
       run:
         working-directory: ${{ env.PROJECT_DIR }}/terraform
@@ -100,18 +102,18 @@ jobs:
         id: tf_outputs
         run: |
           echo "ec2_ip=$(terraform output -raw ec2_public_ip)" >> $GITHUB_OUTPUT
-          echo "kafka_brokers_tls=$(terraform output -raw kafka_bootstrap_brokers_tls)" >> $GITHUB_OUTPUT
+          echo "kafka_bootstrap=$(terraform output -raw kafka_bootstrap_brokers)" >> $GITHUB_OUTPUT
 
   # =====================================================
   # 3️⃣ Verify Artifacts (Matrix)
   # =====================================================
   deploy-verify-artifacts:
     runs-on: ubuntu-latest
-    needs: [build, terraform]   # Ensure build + infra are ready
+    needs: [build, terraform]
     strategy:
       matrix:
         service:
-          - order-service       # Add more services here
+          - order-service
     defaults:
       run:
         working-directory: ${{ env.PROJECT_DIR }}
@@ -126,9 +128,15 @@ jobs:
           name: ${{ matrix.service }}-jar
           path: artifact
 
-      - name: List downloaded files
+      - name: List and verify downloaded artifact
         run: |
           echo "===== Verifying artifact for service: ${{ matrix.service }} ====="
           pwd
           ls -la artifact
-          JAR=$(find artifact -maxdepth 1 -name "${{ matrix.service }}*.jar" | head -n*
+          JAR=$(find artifact -maxdepth 1 -name "${{ matrix.service }}*.jar" | head -n 1)
+          if [ -z "$JAR" ]; then
+            echo "❌ Artifact not found for ${{ matrix.service }}"
+            exit 1
+          else
+            echo "✅ Artifact verified: $JAR"
+          fi
