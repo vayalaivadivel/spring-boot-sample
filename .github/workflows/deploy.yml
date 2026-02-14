@@ -110,27 +110,24 @@ jobs:
           echo "kafka_brokers_tls=$(terraform output -raw kafka_bootstrap_brokers_tls)" >> $GITHUB_OUTPUT
 
   # =====================================================
-  # 3️⃣ Deploy Microservices (Matrix)
+  # 3️⃣ Download artifacts (Matrix)
   # =====================================================
-  deploy:
+  download-artifacts:
     runs-on: ubuntu-latest
-    needs: [build, terraform]
-    strategy:
-      matrix:
-        service:
-          - order-service # Add more services here
-    defaults:
-      run:
-        working-directory: ${{ env.PROJECT_DIR }}
-
+    needs: build
     steps:
-    - name: Download JAR for ${{ matrix.service }}
-      uses: actions/download-artifact@v4
-      with:
-        name: ${{ matrix.service }}-jar
-        path: artifact/
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Show downloaded JAR
-      run: |
-        echo "📦 Downloaded order-service JAR:"
-        ls -l artifact/
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: order-service-jar
+          path: artifact/
+
+      - name: List downloaded files
+        run: |
+          echo "📦 Artifact contents:"
+          ls -l artifact/
+          echo "🔹 Recursive listing:"
+          find artifact/ -type f
