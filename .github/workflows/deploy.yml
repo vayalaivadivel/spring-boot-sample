@@ -101,3 +101,34 @@ jobs:
         run: |
           echo "ec2_ip=$(terraform output -raw ec2_public_ip)" >> $GITHUB_OUTPUT
           echo "kafka_brokers_tls=$(terraform output -raw kafka_bootstrap_brokers_tls)" >> $GITHUB_OUTPUT
+
+  # =====================================================
+  # 3️⃣ Verify Artifacts (Matrix)
+  # =====================================================
+  deploy-verify-artifacts:
+    runs-on: ubuntu-latest
+    needs: [build, terraform]   # Ensure build + infra are ready
+    strategy:
+      matrix:
+        service:
+          - order-service       # Add more services here
+    defaults:
+      run:
+        working-directory: ${{ env.PROJECT_DIR }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download artifact for ${{ matrix.service }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.service }}-jar
+          path: artifact
+
+      - name: List downloaded files
+        run: |
+          echo "===== Verifying artifact for service: ${{ matrix.service }} ====="
+          pwd
+          ls -la artifact
+          JAR=$(find artifact -maxdepth 1 -name "${{ matrix.service }}*.jar" | head -n*
