@@ -54,10 +54,12 @@ jobs:
         run: |
           echo "Building ${{ matrix.service }}..."
 
-          mvn -B -f $PROJECT_DIR/pom.xml clean package \
-              -pl ${{ matrix.service }} -am -DskipTests
+          mvn -B clean package -pl ${{ matrix.service }} -am -DskipTests
 
-          JAR=$(find $PROJECT_DIR/${{ matrix.service }}/target \
+          echo "Checking target directory..."
+          ls -la ${{ matrix.service }}/target || echo "Target folder missing"
+
+          JAR=$(find ${{ matrix.service }}/target \
                 -name "*.jar" ! -name "original*" | head -n 1)
 
           if [ -z "$JAR" ]; then
