@@ -128,14 +128,22 @@ jobs:
           name: ${{ matrix.service }}-jar
           path: ./artifact
 
+      - name: Debug downloaded artifact
+        run: |
+          echo "Listing all files in current dir:"
+          pwd
+          find . -type f
+
       - name: Verify artifact
         run: |
           echo "===== Verifying artifact for service: ${{ matrix.service }} ====="
-          FILE=artifact/${{ matrix.service }}.jar
+          FILE=$(find artifact -maxdepth 1 -name "${{ matrix.service }}*.jar" | head -n 1)
           if [ -f "$FILE" ]; then
             echo "✅ Artifact found: $FILE"
             ls -lh "$FILE"
           else
-            echo "❌ Artifact not found: $FILE"
+            echo "❌ Artifact not found!"
+            echo "Contents of artifact folder:"
+            ls -la artifact || true
             exit 1
           fi
