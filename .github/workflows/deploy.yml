@@ -22,9 +22,12 @@ jobs:
   # =====================================================
   build:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ${{ env.PROJECT_DIR }}
+    strategy:
+      matrix:
+        service:
+          - order-service
+          # - payment-service
+          # - stock-service
 
     steps:
       - name: Checkout code
@@ -36,34 +39,27 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - name: Build all services
+      - name: Build ${{ matrix.service }}
+        working-directory: ${{ env.PROJECT_DIR }}
         run: |
+          mvn -pl ${{ matrix.service }} -am clean package -DskipTests
+
+          JAR=$(find ${{ matrix.service }}/target -maxdepth 1 -name "*.jar" ! -name "*original*" | head -n 1)
+
+          if [ -z "$JAR" ]; then
+            echo "❌ JAR not found"
+            find . -name "*.jar"
+            exit 1
+          fi
+
           mkdir -p artifact
-          SERVICES=("order-service") # Add more modules here
+          cp "$JAR" artifact/${{ matrix.service }}.jar
 
-          for SERVICE in "${SERVICES[@]}"; do
-            echo "🔨 Building $SERVICE..."
-            mvn clean package -pl $SERVICE -am -DskipTests
-
-            # Find the Spring Boot fat JAR
-            JAR=$(find $SERVICE/target -maxdepth 1 -name "*.jar" ! -name "*original*" | head -n 1)
-            if [ -z "$JAR" ]; then
-              echo "❌ JAR not found for $SERVICE"
-              exit 1
-            fi
-
-            echo "✅ Built $SERVICE: $JAR"
-            cp "$JAR" artifact/
-          done
-
-      - name: List artifacts
-        run: ls -la artifact
-
-      - name: Upload all JARs
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: microservices-jars
-          path: artifact/*.jar
+          name: ${{ matrix.service }}-jar
+          path: ${{ env.PROJECT_DIR }}/artifact/${{ matrix.service }}.jar
           if-no-files-found: error
 
   # =====================================================
