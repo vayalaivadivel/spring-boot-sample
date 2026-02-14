@@ -94,7 +94,7 @@
 
     <build>
         <plugins>
-            <!-- This forces every child module to use Java 21 and Plugin 3.13.0 -->
+            <!-- Forces every child module to use Java 21 -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
@@ -107,13 +107,21 @@
                 </configuration>
             </plugin>
 
-            <!-- This ensures the Spring Boot plugin also has a version -->
+            <!-- Spring Boot plugin to create executable (fat) JAR -->
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
-                <version>3.2.4</version>
+                <version>3.5.7</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
+
     </build>
 
 
