@@ -44,7 +44,7 @@ jobs:
 
       - name: Build all services
         run: |
-          SERVICES=("order-service" "other-service")  # Add all services here
+          SERVICES=("order-service")  # Add all services here
           mkdir -p ./artifacts
           for SERVICE in "${SERVICES[@]}"; do
             echo "Building $SERVICE..."
