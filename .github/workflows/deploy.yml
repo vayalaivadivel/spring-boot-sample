@@ -114,7 +114,7 @@ jobs:
           echo "🚀 Deploying $SERVICE to $EC2_HOST"
           scp -i key.pem -o StrictHostKeyChecking=no "$JAR_PATH" $EC2_USER@$EC2_HOST:/home/$EC2_USER/$SERVICE.jar
 
-          ssh -i key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST bash -s << 'DEPLOY_EOF'
+          ssh -i key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST bash -s << DEPLOY_EOF
           set -e
 
           SERVICE="$SERVICE"
@@ -130,7 +130,7 @@ jobs:
 
           # Create systemd service if not exists
           if [ ! -f /etc/systemd/system/$SERVICE.service ]; then
-          sudo tee /etc/systemd/system/$SERVICE.service > /dev/null << 'SYSTEMD_EOF'
+          sudo tee /etc/systemd/system/$SERVICE.service > /dev/null << SYSTEMD_EOF
           [Unit]
           Description=$SERVICE
           After=network.target
