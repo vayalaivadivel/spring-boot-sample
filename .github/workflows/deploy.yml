@@ -160,8 +160,9 @@ jobs:
           echo "✅ Found JAR: $JAR"
           echo "🚀 Deploying $SERVICE to $EC2_HOST"
 
-          # Prepare EC2 directory
-          ssh -i key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST "mkdir -p /opt/$SERVICE"
+          # Prepare EC2 directory with sudo
+          ssh -i key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST \
+            "sudo mkdir -p /opt/$SERVICE && sudo chown -R $EC2_USER:$EC2_USER /opt/$SERVICE"
 
           # Copy JAR
           scp -i key.pem -o StrictHostKeyChecking=no "$JAR" $EC2_USER@$EC2_HOST:/opt/$SERVICE/$SERVICE.jar
