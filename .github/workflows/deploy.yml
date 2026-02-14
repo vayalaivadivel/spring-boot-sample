@@ -114,38 +114,46 @@ jobs:
           echo "🚀 Deploying $SERVICE to $EC2_HOST"
           scp -i key.pem -o StrictHostKeyChecking=no "$JAR_PATH" $EC2_USER@$EC2_HOST:/home/$EC2_USER/$SERVICE.jar
 
-          ssh -i key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST << EOF
-            set -e
+          ssh -i key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST bash -s << 'DEPLOY_EOF'
+          set -e
 
-            sudo mkdir -p /opt/$SERVICE
-            sudo chown -R $EC2_USER:$EC2_USER /opt/$SERVICE
+          SERVICE="$SERVICE"
+          EC2_USER="$EC2_USER"
+          KAFKA_BROKERS_TLS="$KAFKA_BROKERS_TLS"
 
-            echo "KAFKA_BOOTSTRAP_SERVERS_TLS=$KAFKA_BROKERS_TLS" | \
-              sudo tee /opt/$SERVICE/.env > /dev/null
+          # Create app directory
+          sudo mkdir -p /opt/$SERVICE
+          sudo chown -R $EC2_USER:$EC2_USER /opt/$SERVICE
 
-            if [ ! -f /etc/systemd/system/$SERVICE.service ]; then
-              sudo tee /etc/systemd/system/$SERVICE.service > /dev/null << EOL
-            [Unit]
-            Description=$SERVICE
-            After=network.target
+          # Set environment variables
+          echo "KAFKA_BOOTSTRAP_SERVERS_TLS=$KAFKA_BROKERS_TLS" | sudo tee /opt/$SERVICE/.env > /dev/null
 
-            [Service]
-            User=$EC2_USER
-            WorkingDirectory=/opt/$SERVICE
-            EnvironmentFile=/opt/$SERVICE/.env
-            ExecStart=/usr/bin/java -Xms512m -Xmx1g -jar /opt/$SERVICE/$SERVICE.jar
-            Restart=always
-            SuccessExitStatus=143
+          # Create systemd service if not exists
+          if [ ! -f /etc/systemd/system/$SERVICE.service ]; then
+          sudo tee /etc/systemd/system/$SERVICE.service > /dev/null << 'SYSTEMD_EOF'
+          [Unit]
+          Description=$SERVICE
+          After=network.target
 
-            [Install]
-            WantedBy=multi-user.target
-            EOL
-                          sudo systemctl daemon-reload
-                          sudo systemctl enable $SERVICE
-                        fi
+          [Service]
+          User=$EC2_USER
+          WorkingDirectory=/opt/$SERVICE
+          EnvironmentFile=/opt/$SERVICE/.env
+          ExecStart=/usr/bin/java -Xms512m -Xmx1g -jar /opt/$SERVICE/$SERVICE.jar
+          Restart=always
+          SuccessExitStatus=143
 
-                        sudo systemctl stop $SERVICE || true
-                        mv /home/$EC2_USER/$SERVICE.jar /opt/$SERVICE/$SERVICE.jar
-                        sudo systemctl start $SERVICE
-                        sudo systemctl status $SERVICE --no-pager
-                      EOF
+          [Install]
+          WantedBy=multi-user.target
+          SYSTEMD_EOF
+
+          sudo systemctl daemon-reload
+          sudo systemctl enable $SERVICE
+          fi
+
+          # Stop service if running, move new JAR, start service
+          sudo systemctl stop $SERVICE || true
+          mv /home/$EC2_USER/$SERVICE.jar /opt/$SERVICE/$SERVICE.jar
+          sudo systemctl start $SERVICE
+          sudo systemctl status $SERVICE --no-pager
+          DEPLOY_EOF
