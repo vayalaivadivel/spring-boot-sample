@@ -1,4 +1,4 @@
-name: Deploy Microservices to EC2 (No SSL Validation)
+name: Deploy Microservices to EC2 (Matrix Build + Deploy)
 
 on:
   push:
@@ -18,7 +18,7 @@ env:
 jobs:
 
   # =====================================================
-  # 1️⃣ Build Microservices
+  # 1️⃣ Build Microservices (Matrix)
   # =====================================================
   build:
     runs-on: ubuntu-latest
@@ -27,7 +27,7 @@ jobs:
       matrix:
         service:
           - order-service
-          # Add more services as needed
+          # Add more services here
 
     defaults:
       run:
@@ -48,7 +48,6 @@ jobs:
           echo "Building ${{ matrix.service }}..."
           mvn clean package -pl ${{ matrix.service }} -am -DskipTests
 
-          # Verify JAR exists
           JAR=$(find ${{ matrix.service }}/target -name "*.jar" ! -name "original*" | head -n 1)
           if [ -z "$JAR" ]; then
             echo "❌ JAR not found for ${{ matrix.service }}"
@@ -105,7 +104,7 @@ jobs:
           echo "kafka_brokers_tls=$(terraform output -raw kafka_bootstrap_brokers_tls)" >> $GITHUB_OUTPUT
 
   # =====================================================
-  # 3️⃣ Deploy Microservices
+  # 3️⃣ Deploy Microservices (Matrix) with Debug
   # =====================================================
   deploy:
     runs-on: ubuntu-latest
@@ -115,7 +114,7 @@ jobs:
       matrix:
         service:
           - order-service
-          # Add more services as needed
+          # Add more services here
 
     defaults:
       run:
@@ -125,7 +124,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Download JAR artifact
+      - name: Download JAR artifact for ${{ matrix.service }}
         uses: actions/download-artifact@v4
         with:
           name: ${{ matrix.service }}-jar
@@ -144,7 +143,7 @@ jobs:
           chmod 600 key.pem
 
           echo "🔍 Searching JAR for $SERVICE..."
-          JAR=$(find ./artifact -name "*.jar" ! -name "original*" | head -n 1)
+          JAR=$(find ./artifact -name "${SERVICE}*.jar" ! -name "original*" | head -n 1)
           if [ -z "$JAR" ]; then
             echo "❌ JAR not found for $SERVICE"
             exit 1
@@ -155,7 +154,7 @@ jobs:
           # Copy JAR to EC2
           scp -i key.pem -o StrictHostKeyChecking=no "$JAR" $EC2_USER@$EC2_HOST:/opt/$SERVICE/$SERVICE.jar
 
-          # SSH and start systemd
+          # SSH and start systemd, then print debug info
           ssh -i key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST << EOF
             set -e
             sudo mkdir -p /opt/$SERVICE
@@ -187,4 +186,12 @@ jobs:
             sudo systemctl stop $SERVICE || true
             sudo systemctl start $SERVICE
             sudo systemctl status $SERVICE --no-pager
+
+            # 🔹 Debug: show EC2 IP and Kafka brokers
+            echo ""
+            echo "========================"
+            echo "Service: $SERVICE"
+            echo "EC2 IP: $EC2_HOST"
+            echo "Kafka Brokers TLS: $KAFKA_BROKERS_TLS"
+            echo "========================"
             EOF

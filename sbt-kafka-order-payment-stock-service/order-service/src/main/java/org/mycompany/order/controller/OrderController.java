@@ -46,7 +46,7 @@ public class OrderController {
                 order.source()
         );
         template.send("orders", updatedOrder.id(), updatedOrder);
-        LOG.info("Order has beensent: {}", updatedOrder);
+        LOG.info("Order has been sent: {}", updatedOrder);
         return updatedOrder;
     }
 
