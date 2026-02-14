@@ -126,17 +126,16 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: ${{ matrix.service }}-jar
-          path: artifact
+          path: ./artifact
 
-      - name: List and verify downloaded artifact
+      - name: Verify artifact
         run: |
           echo "===== Verifying artifact for service: ${{ matrix.service }} ====="
-          pwd
-          ls -la artifact
-          JAR=$(find artifact -maxdepth 1 -name "${{ matrix.service }}*.jar" | head -n 1)
-          if [ -z "$JAR" ]; then
-            echo "❌ Artifact not found for ${{ matrix.service }}"
-            exit 1
+          FILE=artifact/${{ matrix.service }}.jar
+          if [ -f "$FILE" ]; then
+            echo "✅ Artifact found: $FILE"
+            ls -lh "$FILE"
           else
-            echo "✅ Artifact verified: $JAR"
+            echo "❌ Artifact not found: $FILE"
+            exit 1
           fi
