@@ -54,10 +54,8 @@ jobs:
         run: |
           echo "Building ${{ matrix.service }}..."
 
-          mvn -B clean package -pl ${{ matrix.service }} -am -DskipTests
-
-          echo "Checking target directory..."
-          ls -la ${{ matrix.service }}/target || echo "Target folder missing"
+          mvn -B clean package \
+              -pl ${{ matrix.service }} -am -DskipTests
 
           JAR=$(find ${{ matrix.service }}/target \
                 -name "*.jar" ! -name "original*" | head -n 1)
@@ -67,7 +65,9 @@ jobs:
             exit 1
           fi
 
+          echo "JAR_PATH=$JAR" >> $GITHUB_ENV
           echo "✅ Built $JAR"
+
 
 
   # =====================================================
@@ -145,52 +145,61 @@ jobs:
           EC2_USER: ${{ secrets.EC2_USER }}
           EC2_KEY: ${{ secrets.EC2_KEY }}
           SERVICE: ${{ matrix.service }}
-          KAFKA_BROKERS_TLS: ${{ needs.terraform.outputs.kafka_brokers_tls }}
-          PROJECT_DIR: ${{ env.PROJECT_DIR }}
+          KAFKA_BROKERS_TLS: ${{ needs.terraform.outputs.kafka_brokers_tls }} 
         run: |
+          set -e
+
           echo "$EC2_KEY" > key.pem
           chmod 600 key.pem
 
-          # Get the JAR from correct directory
-          JAR=$(ls $PROJECT_DIR/$SERVICE/target/*.jar 2>/dev/null | grep -v original | head -n 1)
-          if [ -z "$JAR" ] || [ ! -f "$JAR" ]; then
-            echo "❌ JAR not found for $SERVICE at $PROJECT_DIR/$SERVICE/target/"
+          echo "🔍 Searching JAR for $SERVICE..."
+
+          # ✅ FIXED: Remove $PROJECT_DIR prefix
+          JAR=$(find $SERVICE/target -name "*.jar" ! -name "original*" | head -n 1)
+
+          if [ -z "$JAR" ]; then
+            echo "❌ JAR not found for $SERVICE in $SERVICE/target/"
             exit 1
           fi
 
-
+          echo "✅ Found JAR: $JAR"
           echo "🚀 Deploying $SERVICE to $EC2_HOST"
 
-          scp -i key.pem -o StrictHostKeyChecking=no "$JAR" $EC2_USER@$EC2_HOST:/home/$EC2_USER/
+          scp -i key.pem -o StrictHostKeyChecking=no \
+            "$JAR" $EC2_USER@$EC2_HOST:/home/$EC2_USER/$SERVICE.jar
 
           ssh -i key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST << EOF
-          set -e
-          sudo mkdir -p /opt/$SERVICE
-          sudo chown -R $EC2_USER:$EC2_USER /opt/$SERVICE
+            set -e
 
-          echo "KAFKA_BOOTSTRAP_SERVERS_TLS=$KAFKA_BROKERS_TLS" | sudo tee /opt/$SERVICE/.env
+            sudo mkdir -p /opt/$SERVICE
+            sudo chown -R $EC2_USER:$EC2_USER /opt/$SERVICE
 
-          if [ ! -f /etc/systemd/system/$SERVICE.service ]; then
-            sudo tee /etc/systemd/system/$SERVICE.service > /dev/null << EOL
-          [Unit]
-          Description=$SERVICE
-          After=network.target
+            echo "KAFKA_BOOTSTRAP_SERVERS_TLS=$KAFKA_BROKERS_TLS" | \
+              sudo tee /opt/$SERVICE/.env > /dev/null
 
-          [Service]
-          User=$EC2_USER
-          WorkingDirectory=/opt/$SERVICE
-          ExecStart=/usr/bin/java -Xms512m -Xmx1g -jar /opt/$SERVICE/$SERVICE.jar
-          Restart=always
+            if [ ! -f /etc/systemd/system/$SERVICE.service ]; then
+              sudo tee /etc/systemd/system/$SERVICE.service > /dev/null << EOL
+            [Unit]
+            Description=$SERVICE
+            After=network.target
 
-          [Install]
-          WantedBy=multi-user.target
-          EOL
-                      sudo systemctl daemon-reload
-                      sudo systemctl enable $SERVICE
-                    fi
+            [Service]
+            User=$EC2_USER
+            WorkingDirectory=/opt/$SERVICE
+            EnvironmentFile=/opt/$SERVICE/.env
+            ExecStart=/usr/bin/java -Xms512m -Xmx1g -jar /opt/$SERVICE/$SERVICE.jar
+            Restart=always
+            SuccessExitStatus=143
 
-                    sudo systemctl stop $SERVICE || true
-                    mv /home/$EC2_USER/*.jar /opt/$SERVICE/$SERVICE.jar
-                    sudo systemctl start $SERVICE
-                    sudo systemctl status $SERVICE --no-pager
-          EOF
+            [Install]
+            WantedBy=multi-user.target
+            EOL
+            sudo systemctl daemon-reload
+            sudo systemctl enable $SERVICE
+            fi
+
+            sudo systemctl stop $SERVICE || true
+            mv /home/$EC2_USER/$SERVICE.jar /opt/$SERVICE/$SERVICE.jar
+            sudo systemctl start $SERVICE
+            sudo systemctl status $SERVICE --no-pager
+            EOF
