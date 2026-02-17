@@ -1,4 +1,4 @@
-name: Standalone Terraform Destroy with Plan & Log
+name: Destroy All
 
 on:
   workflow_dispatch:

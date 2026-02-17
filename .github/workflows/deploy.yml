@@ -1,4 +1,4 @@
-name: Deploy Microservices to EC2 (Matrix) - order-service, payment-service, stock-service.
+name: Deploy-Microservices with terraform.
 
 on:
   push:
