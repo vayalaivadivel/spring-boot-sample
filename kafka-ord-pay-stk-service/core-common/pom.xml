@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
     <parent>
         <groupId>com.mycompany.app</groupId>
-        <artifactId>docker-kafa-ord-pay-stk-service</artifactId>
+        <artifactId>kafka-ord-pay-stk-service</artifactId>
         <version>1.0-SNAPSHOT</version>
     </parent>
     <groupId>org.mycompany.core.common</groupId>
@@ -15,6 +15,6 @@
     <properties>
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
-        <sonar.moduleKey>${artifactId}</sonar.moduleKey>
+        <sonar.moduleKey>${project.artifactId}</sonar.moduleKey>
     </properties>
 </project>

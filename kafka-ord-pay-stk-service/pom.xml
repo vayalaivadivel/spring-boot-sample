@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?><project xmlns="http://maven.apache.org" xmlns:xsi="http://www.w3.org" xsi:schemaLocation="http://maven.apache.org http://maven.apache.org">
   <modelVersion>4.0.0</modelVersion>
   <groupId>com.mycompany.app</groupId>
-  <artifactId>docker-kafa-ord-pay-stk-service</artifactId>
+  <artifactId>kafka-ord-pay-stk-service</artifactId>
   <version>1.0-SNAPSHOT</version>
   <packaging>pom</packaging>
   <modules>
