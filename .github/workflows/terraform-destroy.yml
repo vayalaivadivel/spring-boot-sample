@@ -1,4 +1,4 @@
-name: Destroy All
+name: Standalone Terraform Destroy
 
 on:
   workflow_dispatch:
@@ -8,73 +8,55 @@ on:
         required: true
         default: "dev"
       confirm:
-        description: "Type YES to confirm destruction"
+        description: "Type YES to confirm destroy"
         required: true
-        default: "NO"
 
 env:
+  PROJECT_DIR: kafka-ord-pay-stk-service
   AWS_REGION: us-east-1
-  TERRAFORM_DIR: kafka-ord-pay-stk-service/terraform
 
 jobs:
   terraform-destroy:
     runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.confirm == 'YES' }}
+    defaults:
+      run:
+        working-directory: ${{ env.PROJECT_DIR }}/terraform
 
     steps:
-      # 1️⃣ Checkout repo
-      - name: Checkout repository
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 2️⃣ Setup Terraform
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-
-      # 3️⃣ Configure AWS credentials
-      - name: Configure AWS
+      - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      # 4️⃣ Terraform Init
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
       - name: Terraform Init
-        working-directory: ${{ env.TERRAFORM_DIR }}
         run: terraform init
 
-      # 5️⃣ Terraform Validate
       - name: Terraform Validate
-        working-directory: ${{ env.TERRAFORM_DIR }}
         run: terraform validate
 
-      # 6️⃣ Terraform Plan for Destroy (Log Output)
-      - name: Terraform Plan (Destroy Preview)
-        working-directory: ${{ env.TERRAFORM_DIR }}
+      - name: Show Destroy Plan
         run: |
           echo "🔹 Showing Terraform destroy plan for environment: ${{ github.event.inputs.environment }}"
-          terraform plan -destroy -var-file=${{ env.TERRAFORM_DIR }}/${{ github.event.inputs.environment }}/terraform.tfvars -out=tfplan_destroy
-          terraform show -no-color tfplan_destroy > destroy_plan.log
-          echo "📄 Destroy plan saved to destroy_plan.log"
-        # Upload plan log as artifact
-      - name: Upload destroy plan log
+          terraform plan \
+            -destroy \
+            -var-file=${{ github.event.inputs.environment }}/terraform.tfvars \
+            -out=tfplan
+          terraform show -no-color tfplan > destroy_plan.log
+
+      - name: Upload Destroy Plan Log
         uses: actions/upload-artifact@v4
         with:
           name: destroy-plan-log
-          path: ${{ env.TERRAFORM_DIR }}/destroy_plan.log
+          path: destroy_plan.log
 
-      # 7️⃣ Confirm Destruction
-      - name: Confirm Destruction
-        run: |
-          if [ "${{ github.event.inputs.confirm }}" != "YES" ]; then
-            echo "❌ Destruction cancelled. Type YES to confirm!"
-            exit 1
-          fi
-          echo "✅ Confirmation received. Proceeding with Terraform destroy."
-
-      # 8️⃣ Terraform Destroy
-      - name: Terraform Destroy
-        working-directory: ${{ env.TERRAFORM_DIR }}
-        run: |
-          echo "⚠️ Destroying all resources for environment: ${{ github.event.inputs.environment }}"
-          terraform destroy -var-file=${{ env.TERRAFORM_DIR }}/${{ github.event.inputs.environment }}/terraform.tfvars -auto-approve
-
+      - name: Execute Destroy
+        run: terraform apply -auto-approve tfplan
