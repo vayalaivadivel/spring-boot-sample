@@ -26,8 +26,8 @@ jobs:
       matrix:
         service:
           - order-service
-          # - payment-service
-          # - stock-service
+          - payment-service
+          - stock-service
 
     steps:
       - name: Checkout code
