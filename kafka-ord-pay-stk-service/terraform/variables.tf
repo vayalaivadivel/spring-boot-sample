@@ -24,3 +24,21 @@ variable "kafka_instance_type" {
   description = "Instance type for MSK brokers"
   type        = string
 }
+
+variable "rds_username" {
+  description = "RDS MySQL username"
+  type        = string
+  default     = "admin"
+}
+
+variable "rds_password" {
+  description = "RDS MySQL password"
+  type        = string
+  sensitive   = true
+}
+
+variable "rds_db_name" {
+  description = "RDS MySQL database name"
+  type        = string
+  default     = "practice_db"
+}

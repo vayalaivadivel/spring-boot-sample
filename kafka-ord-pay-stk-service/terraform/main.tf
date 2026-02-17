@@ -170,3 +170,77 @@ resource "aws_msk_cluster" "kafka" {
     Project     = "kafka-practice"
   }
 }
+
+
+############################
+# RDS Security Group
+############################
+resource "aws_security_group" "rds_sg" {
+  name        = "rds-sg"
+  description = "Allow MySQL access from EC2 + public for dev"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "MySQL access from EC2"
+    from_port   = 3306
+    to_port     = 3306
+    protocol    = "tcp"
+    cidr_blocks = ["10.0.0.0/16"]  # VPC-wide
+  }
+
+  ingress {
+    description = "MySQL access from outside (dev only)"
+    from_port   = 3306
+    to_port     = 3306
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]   # open access for dev
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = { Name = "rds-sg" }
+}
+
+############################
+# RDS Subnet Group
+############################
+resource "aws_db_subnet_group" "rds_subnet_group" {
+  name       = "rds-subnet-group"
+  subnet_ids = [
+    aws_subnet.private_1.id,
+    aws_subnet.private_2.id
+  ]
+
+  tags = { Name = "rds-subnet-group" }
+}
+
+############################
+# RDS MySQL Instance
+############################
+resource "aws_db_instance" "mysql" {
+  identifier             = "practice-mysql-db"
+  engine                 = "mysql"
+  engine_version         = "8.0"
+  instance_class         = "db.t3.micro"
+  allocated_storage      = 20
+  storage_type           = "gp2"
+  username               = var.rds_username
+  password               = var.rds_password
+  db_name                = var.rds_db_name
+  port                   = 3306
+  multi_az               = false
+  publicly_accessible    = true
+  vpc_security_group_ids = [aws_security_group.rds_sg.id]
+  db_subnet_group_name   = aws_db_subnet_group.rds_subnet_group.name
+  skip_final_snapshot    = true
+
+  tags = {
+    Environment = var.environment
+    Project     = "kafka-practice"
+  }
+}
