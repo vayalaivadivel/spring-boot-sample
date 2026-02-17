@@ -1,15 +1,32 @@
-spring.application.name: stock
+spring:
+  application.name: stock-service
 spring.kafka:
-#  bootstrap-servers: 127.0.0.1:56820
-  consumer:
-    key-deserializer: org.apache.kafka.common.serialization.LongDeserializer
-    value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
-    properties:
-      spring.json.trusted.packages: "*"
+  bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS}
+  properties:
+    security:
+      protocol: SSL
+      ssl.endpoint.identification.algorithm: ""   # disables hostname verification
+  admin:
+    client-id: adminclient-1
   producer:
     key-serializer: org.apache.kafka.common.serialization.LongSerializer
     value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+  streams:
+    properties:
+      default.key.serde: org.apache.kafka.common.serialization.Serdes$LongSerde
+      default.value.serde: org.springframework.kafka.support.serializer.JsonSerde
+      spring.json.trusted.packages: "*"
+    state-dir: /tmp/kafka-streams/
 
-spring.output.ansi.enabled: ALWAYS
-
+management:
+  health:
+    binders:
+      enabled: true
+  endpoint:
+    health:
+      show-details: ALWAYS
+# Set a custom health URL
+management.endpoints.web.base-path: /stock-service
 logging.pattern.console: "%clr(%d{HH:mm:ss.SSS}){blue} %clr(---){faint} %clr([%15.15t]){yellow} %clr(:){red} %clr(%m){faint}%n"
+server:
+  port: 8083

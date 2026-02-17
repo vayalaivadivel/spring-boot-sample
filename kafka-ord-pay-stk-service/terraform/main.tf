@@ -5,7 +5,7 @@ resource "aws_vpc" "main" {
   cidr_block           = "10.0.0.0/16"
   enable_dns_support   = true
   enable_dns_hostnames = true
-  tags = { Name = "main-vpc" }
+  tags                 = { Name = "main-vpc" }
 }
 
 ############################
@@ -24,7 +24,7 @@ resource "aws_subnet" "public" {
   cidr_block              = "10.0.1.0/24"
   map_public_ip_on_launch = true
   availability_zone       = "${var.region}a"
-  tags = { Name = "public-subnet" }
+  tags                    = { Name = "public-subnet" }
 }
 
 # Private subnets for MSK
@@ -32,14 +32,14 @@ resource "aws_subnet" "private_1" {
   vpc_id            = aws_vpc.main.id
   cidr_block        = "10.0.2.0/24"
   availability_zone = "${var.region}a"
-  tags = { Name = "private-1" }
+  tags              = { Name = "private-1" }
 }
 
 resource "aws_subnet" "private_2" {
   vpc_id            = aws_vpc.main.id
   cidr_block        = "10.0.3.0/24"
   availability_zone = "${var.region}b"
-  tags = { Name = "private-2" }
+  tags              = { Name = "private-2" }
 }
 ############################
 # Route Table for public subnet
@@ -68,23 +68,37 @@ resource "aws_security_group" "ec2_sg" {
   vpc_id      = aws_vpc.main.id
 
   ingress {
-    from_port = 22
-    to_port   = 22
-    protocol  = "tcp"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
 
   ingress {
-    from_port = 8080
-    to_port   = 8090
-    protocol  = "tcp"
+    from_port   = 8080
+    to_port     = 8090
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 8081
+    to_port     = 8091
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 8082
+    to_port     = 8092
+    protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
 
   egress {
-    from_port = 0
-    to_port   = 0
-    protocol  = "-1"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
 }
@@ -103,9 +117,9 @@ resource "aws_security_group" "msk_sg" {
   }
 
   egress {
-    from_port = 0
-    to_port   = 0
-    protocol  = "-1"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
 }
@@ -115,10 +129,10 @@ resource "aws_security_group" "msk_sg" {
 ############################
 data "aws_ami" "amazon_linux" {
   most_recent = true
-  owners = ["amazon"]
+  owners      = ["amazon"]
 
   filter {
-    name = "name"
+    name   = "name"
     values = ["amzn2-ami-hvm-*-x86_64-gp2"]
   }
 }
@@ -131,10 +145,10 @@ resource "aws_instance" "ec2" {
   instance_type               = var.ec2-instance_type
   key_name                    = var.key_name
   subnet_id                   = aws_subnet.public.id
-  vpc_security_group_ids = [aws_security_group.ec2_sg.id]
+  vpc_security_group_ids      = [aws_security_group.ec2_sg.id]
   associate_public_ip_address = true
-  user_data = file("${path.module}/java21-setup.sh")
-  tags = { Name = "order-service-ec2" }
+  user_data                   = file("${path.module}/java21-setup.sh")
+  tags                        = { Name = "order-service-ec2" }
 }
 
 ############################
@@ -166,8 +180,8 @@ resource "aws_msk_cluster" "kafka" {
   }
 
   tags = {
-    Environment = "dev"
-    Project     = "kafka-practice"
+    Environment = var.environment
+    Project     = var.project
   }
 }
 
@@ -185,7 +199,7 @@ resource "aws_security_group" "rds_sg" {
     from_port   = 3306
     to_port     = 3306
     protocol    = "tcp"
-    cidr_blocks = ["10.0.0.0/16"]  # VPC-wide
+    cidr_blocks = ["10.0.0.0/16"] # VPC-wide
   }
 
   ingress {
@@ -193,7 +207,7 @@ resource "aws_security_group" "rds_sg" {
     from_port   = 3306
     to_port     = 3306
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]   # open access for dev
+    cidr_blocks = ["0.0.0.0/0"] # open access for dev
   }
 
   egress {
@@ -210,7 +224,7 @@ resource "aws_security_group" "rds_sg" {
 # RDS Subnet Group
 ############################
 resource "aws_db_subnet_group" "rds_subnet_group" {
-  name       = "rds-subnet-group"
+  name = "rds-subnet-group"
   subnet_ids = [
     aws_subnet.private_1.id,
     aws_subnet.private_2.id
@@ -241,6 +255,6 @@ resource "aws_db_instance" "mysql" {
 
   tags = {
     Environment = var.environment
-    Project     = "kafka-practice"
+    Project     = var.project
   }
 }

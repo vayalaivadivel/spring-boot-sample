@@ -42,3 +42,13 @@ variable "rds_db_name" {
   type        = string
   default     = "practice_db"
 }
+
+variable "environment" {
+  description = "Environment name"
+  type        = string
+}
+
+variable "project" {
+  description = "Name of the project"
+  type        = string
+}
