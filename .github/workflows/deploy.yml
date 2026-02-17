@@ -1,4 +1,4 @@
-name: Deploy Microservices to EC2 (Matrix)
+name: Deploy Microservices to EC2 (Matrix) - order-service, payment-service, stock-service.
 
 on:
   push:
@@ -12,7 +12,7 @@ on:
 
 env:
   ENVIRONMENT: ${{ github.event.inputs.environment || 'dev' }}
-  PROJECT_DIR: sbt-kafka-order-payment-stock-service
+  PROJECT_DIR: kafka-ord-pay-stk-service
   AWS_REGION: us-east-1
 
 jobs:
