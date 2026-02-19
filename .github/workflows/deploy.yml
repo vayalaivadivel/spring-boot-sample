@@ -51,25 +51,54 @@ jobs:
             fi
           done
 
-          # If core-common changed → build all
-          if [ "$CORE_CHANGED" = true ]; then
-            SERVICES=("order-service" "payment-service" "stock-service")
-          fi
+          
 
-          if [ ${#SERVICES[@]} -eq 0 ]; then
-            echo "services=[]" >> $GITHUB_OUTPUT
-          else
-            JSON="["
-            for i in "${!SERVICES[@]}"; do
-              JSON="$JSON${SERVICES[$i]}"
-              if [ "$i" -lt "$((${#SERVICES[@]} - 1))" ]; then
-                JSON="$JSON,"
+          - name: Detect changed services
+            id: set-matrix
+            run: |
+              echo "🔍 Detecting changed modules..."
+
+              CHANGED=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} || true)
+              echo "Changed files:"
+              echo "$CHANGED"
+
+              SERVICES=()
+              CORE_CHANGED=false
+
+              # Check core-common
+              if echo "$CHANGED" | grep -q "kafka-ord-pay-stk-service/core-common/"; then
+                CORE_CHANGED=true
               fi
-            done
-            JSON="$JSON]"
-            echo "services=$JSON" >> $GITHUB_OUTPUT
-            echo "Final JSON: $JSON"
-          fi
+
+              # Detect changed microservices
+              for svc in order-service payment-service stock-service; do
+                if echo "$CHANGED" | grep -q "kafka-ord-pay-stk-service/$svc/"; then
+                  SERVICES+=("$svc")
+                fi
+              done
+
+              # If core-common changed → build all
+              if [ "$CORE_CHANGED" = true ]; then
+                SERVICES=("order-service" "payment-service" "stock-service")
+              fi
+
+              # Build proper JSON manually
+              if [ ${#SERVICES[@]} -eq 0 ]; then
+                echo "services=[]" >> $GITHUB_OUTPUT
+                echo "Final JSON: []"
+              else
+                JSON="["
+                for i in "${!SERVICES[@]}"; do
+                  JSON="$JSON\"${SERVICES[$i]}\""
+                  if [ "$i" -lt "$((${#SERVICES[@]} - 1))" ]; then
+                    JSON="$JSON,"
+                  fi
+                done
+                JSON="$JSON]"
+                echo "services=$JSON" >> $GITHUB_OUTPUT
+                echo "Final JSON: $JSON"
+              fi
+
 
 
           echo "✅ Services to build: $SERVICES"
@@ -80,7 +109,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     needs: detect-changes
-    if: needs.detect-changes.outputs.services != '[]'
+    if: needs.detect-changes.outputs.services != '[]' && needs.detect-changes.outputs.services != ''
     strategy:
       matrix:
         service: ${{ fromJson(needs.detect-changes.outputs.services) }}
