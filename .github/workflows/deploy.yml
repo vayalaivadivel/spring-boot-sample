@@ -35,23 +35,27 @@ jobs:
         run: |
           echo "🔍 Detecting changed modules..."
 
-          CHANGED=$(git diff --name-only origin/master...HEAD || true)
+          # Safest detection for push events
+          CHANGED=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} || true)
+          echo "Changed files:"
           echo "$CHANGED"
 
           SERVICES=()
           CORE_CHANGED=false
 
-          if echo "$CHANGED" | grep -q "^${PROJECT_DIR}/core-common/"; then
+          # Check core-common changes
+          if echo "$CHANGED" | grep -q "kafka-ord-pay-stk-service/core-common/"; then
             CORE_CHANGED=true
           fi
 
+          # Check microservice changes
           for svc in order-service payment-service stock-service; do
-            if echo "$CHANGED" | grep -q "^${PROJECT_DIR}/$svc/"; then
+            if echo "$CHANGED" | grep -q "kafka-ord-pay-stk-service/$svc/"; then
               SERVICES+=("\"$svc\"")
             fi
           done
 
-          # If core-common changed → build & deploy all
+          # If core-common changed → build all
           if [ "$CORE_CHANGED" = true ]; then
             SERVICES=("order-service" "payment-service" "stock-service")
           fi
@@ -61,6 +65,9 @@ jobs:
           else
             echo "services=[${SERVICES[*]}]" >> $GITHUB_OUTPUT
           fi
+
+          echo "✅ Services to build: $SERVICES"
+
 
 # =====================================================
 # 2️⃣ Build Changed Services
