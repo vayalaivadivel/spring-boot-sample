@@ -25,13 +25,16 @@ jobs:
       services: ${{ steps.set-matrix.outputs.services }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - id: set-matrix
+      - name: Detect changed services
+        id: set-matrix
         run: |
           echo "🔍 Detecting changed modules..."
+
           CHANGED=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} || true)
           echo "Changed files:"
           echo "$CHANGED"
@@ -39,69 +42,29 @@ jobs:
           SERVICES=()
           CORE_CHANGED=false
 
-          # Check core-common
           if echo "$CHANGED" | grep -q "kafka-ord-pay-stk-service/core-common/"; then
             CORE_CHANGED=true
           fi
 
-          # Detect changed microservices
           for svc in order-service payment-service stock-service; do
             if echo "$CHANGED" | grep -q "kafka-ord-pay-stk-service/$svc/"; then
-              SERVICES+=("\"$svc\"")
+              SERVICES+=("$svc")
             fi
           done
 
-          
+          if [ "$CORE_CHANGED" = true ]; then
+            SERVICES=("order-service" "payment-service" "stock-service")
+          fi
 
-          - name: Detect changed services
-            id: set-matrix
-            run: |
-              echo "🔍 Detecting changed modules..."
-
-              CHANGED=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} || true)
-              echo "Changed files:"
-              echo "$CHANGED"
-
-              SERVICES=()
-              CORE_CHANGED=false
-
-              # Check core-common
-              if echo "$CHANGED" | grep -q "kafka-ord-pay-stk-service/core-common/"; then
-                CORE_CHANGED=true
-              fi
-
-              # Detect changed microservices
-              for svc in order-service payment-service stock-service; do
-                if echo "$CHANGED" | grep -q "kafka-ord-pay-stk-service/$svc/"; then
-                  SERVICES+=("$svc")
-                fi
-              done
-
-              # If core-common changed → build all
-              if [ "$CORE_CHANGED" = true ]; then
-                SERVICES=("order-service" "payment-service" "stock-service")
-              fi
-
-              # Build proper JSON manually
-              if [ ${#SERVICES[@]} -eq 0 ]; then
-                echo "services=[]" >> $GITHUB_OUTPUT
-                echo "Final JSON: []"
-              else
-                JSON="["
-                for i in "${!SERVICES[@]}"; do
-                  JSON="$JSON\"${SERVICES[$i]}\""
-                  if [ "$i" -lt "$((${#SERVICES[@]} - 1))" ]; then
-                    JSON="$JSON,"
-                  fi
-                done
-                JSON="$JSON]"
-                echo "services=$JSON" >> $GITHUB_OUTPUT
-                echo "Final JSON: $JSON"
-              fi
-
-
-
-          echo "✅ Services to build: $SERVICES"
+          if [ ${#SERVICES[@]} -eq 0 ]; then
+            echo "services=[]" >> $GITHUB_OUTPUT
+            echo "Final JSON: []"
+          else
+            JSON=$(printf '"%s",' "${SERVICES[@]}")
+            JSON="[${JSON%,}]"
+            echo "services=$JSON" >> $GITHUB_OUTPUT
+            echo "Final JSON: $JSON"
+          fi
 
 # =====================================================
 # 2️⃣ Build Changed Services (parallel)
@@ -128,14 +91,15 @@ jobs:
         run: |
           echo "🔨 Building ${{ matrix.service }}..."
           mvn -pl ${{ matrix.service }} -am clean package -DskipTests
+
           JAR=$(find ${{ matrix.service }}/target -maxdepth 1 -name "*.jar" ! -name "*original*" | head -n 1)
           if [ -z "$JAR" ]; then
             echo "❌ JAR not found"
             exit 1
           fi
+
           mkdir -p artifact
           cp "$JAR" artifact/${{ matrix.service }}.jar
-          echo "✅ Built: ${{ matrix.service }}.jar"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
@@ -190,12 +154,12 @@ jobs:
           echo "rds_password=$(terraform output -raw rds_password)" >> $GITHUB_OUTPUT
 
 # =====================================================
-# 4️⃣ Deploy Changed Services (after build + terraform)
+# 4️⃣ Deploy
 # =====================================================
   deploy:
     runs-on: ubuntu-latest
-    needs: [build, terraform, detect-changes]
-    if: needs.detect-changes.outputs.services != '[]'
+    needs: [build, terraform]
+    if: needs.detect-changes.outputs.services != '[]' && needs.detect-changes.outputs.services != ''
     strategy:
       matrix:
         service: ${{ fromJson(needs.detect-changes.outputs.services) }}
@@ -206,62 +170,3 @@ jobs:
         with:
           name: ${{ matrix.service }}-jar
           path: artifact/${{ matrix.service }}
-
-      - name: Deploy to EC2
-        env:
-          EC2_HOST: ${{ needs.terraform.outputs.ec2_ip }}
-          EC2_USER: ${{ secrets.EC2_USER }}
-          EC2_KEY: ${{ secrets.EC2_KEY }}
-          SERVICE: ${{ matrix.service }}
-          KAFKA_BOOTSTRAP_SERVERS: ${{ needs.terraform.outputs.kafka_brokers_tls }}
-          DB_URL: jdbc:mysql://${{ needs.terraform.outputs.rds_endpoint }}/order_db?useSSL=false&serverTimezone=UTC
-          DB_USERNAME: ${{ needs.terraform.outputs.rds_username }}
-          DB_PASSWORD: ${{ needs.terraform.outputs.rds_password }}
-
-        run: |
-          set -e
-          echo "$EC2_KEY" > key.pem
-          chmod 600 key.pem
-
-          JAR=$(find artifact/$SERVICE -name "*.jar" | head -n 1)
-
-          ssh -i key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST \
-            "sudo mkdir -p /opt/$SERVICE && sudo chown -R $EC2_USER:$EC2_USER /opt/$SERVICE"
-
-          scp -i key.pem -o StrictHostKeyChecking=no "$JAR" \
-            $EC2_USER@$EC2_HOST:/opt/$SERVICE/$SERVICE.jar
-
-          ssh -i key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST << EOF
-          set -e
-
-          echo "KAFKA_BOOTSTRAP_SERVERS=$KAFKA_BOOTSTRAP_SERVERS" > /opt/$SERVICE/.env
-          echo "DB_URL=$DB_URL" >> /opt/$SERVICE/.env
-          echo "DB_USERNAME=$DB_USERNAME" >> /opt/$SERVICE/.env
-          echo "DB_PASSWORD=$DB_PASSWORD" >> /opt/$SERVICE/.env
-
-          if [ ! -f /etc/systemd/system/$SERVICE.service ]; then
-            sudo tee /etc/systemd/system/$SERVICE.service > /dev/null << EOL
-          [Unit]
-          Description=$SERVICE
-          After=network.target
-
-          [Service]
-          User=$EC2_USER
-          WorkingDirectory=/opt/$SERVICE
-          EnvironmentFile=/opt/$SERVICE/.env
-          ExecStart=/usr/bin/java -Xms128m -Xmx256m -jar /opt/$SERVICE/$SERVICE.jar
-          Restart=always
-          SuccessExitStatus=143
-
-          [Install]
-          WantedBy=multi-user.target
-          EOL
-            sudo systemctl daemon-reload
-            sudo systemctl enable $SERVICE
-          fi
-
-          sudo systemctl restart $SERVICE
-          sudo systemctl status $SERVICE --no-pager
-          EOF
-
-          rm -f key.pem
