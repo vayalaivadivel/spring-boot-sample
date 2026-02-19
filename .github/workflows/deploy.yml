@@ -177,7 +177,7 @@ jobs:
           EC2_KEY: ${{ secrets.EC2_KEY }}
           SERVICE: ${{ matrix.service }}
           KAFKA_BOOTSTRAP_SERVERS: ${{ needs.terraform.outputs.kafka_brokers_tls }}
-          DB_URL: jdbc:mysql://${{ needs.terraform.outputs.rds_endpoint }}/order_db?useSSL=false&serverTimezone=UTC
+          DB_URL: jdbc:mysql://${{ needs.terraform.outputs.rds_endpoint }}/order_db?useSSL=false&serverTimezone=UTC&createDatabaseIfNotExist=true
           DB_USERNAME: ${{ needs.terraform.outputs.rds_username }}
           DB_PASSWORD: ${{ needs.terraform.outputs.rds_password }}
 
