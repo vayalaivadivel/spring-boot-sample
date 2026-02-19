@@ -59,8 +59,18 @@ jobs:
           if [ ${#SERVICES[@]} -eq 0 ]; then
             echo "services=[]" >> $GITHUB_OUTPUT
           else
-            echo "services=[${SERVICES[*]}]" >> $GITHUB_OUTPUT
+            JSON="["
+            for i in "${!SERVICES[@]}"; do
+              JSON="$JSON${SERVICES[$i]}"
+              if [ "$i" -lt "$((${#SERVICES[@]} - 1))" ]; then
+                JSON="$JSON,"
+              fi
+            done
+            JSON="$JSON]"
+            echo "services=$JSON" >> $GITHUB_OUTPUT
+            echo "Final JSON: $JSON"
           fi
+
 
           echo "✅ Services to build: $SERVICES"
 
