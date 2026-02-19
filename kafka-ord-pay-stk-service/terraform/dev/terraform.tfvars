@@ -7,6 +7,6 @@ kafka_instance_type = "kafka.m5.large"
 
 rds_username = "admin"
 rds_password = "Admin12345!"
-rds_db_name  = "practice_db"
+rds_db_name  = "order_db"
 environment  = "dev"
 project="kafka-practice"
