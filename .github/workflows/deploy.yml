@@ -170,6 +170,64 @@ jobs:
           name: ${{ matrix.service }}-jar
           path: artifact/${{ matrix.service }}
 
-      - name: Deploy ${{ matrix.service }}
+      - name: Deploy ${{ matrix.service }} to EC2
+        env:
+          EC2_HOST: ${{ needs.terraform.outputs.ec2_ip }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_KEY: ${{ secrets.EC2_KEY }}
+          SERVICE: ${{ matrix.service }}
+          KAFKA_BOOTSTRAP_SERVERS: ${{ needs.terraform.outputs.kafka_brokers_tls }}
+          DB_URL: jdbc:mysql://${{ needs.terraform.outputs.rds_endpoint }}/order_db?useSSL=false&serverTimezone=UTC
+          DB_USERNAME: ${{ needs.terraform.outputs.rds_username }}
+          DB_PASSWORD: ${{ needs.terraform.outputs.rds_password }}
+
         run: |
-          echo "🚀 Deploying ${{ matrix.service }} to ${{ needs.terraform.outputs.ec2_ip }}"
+          set -e
+          echo "$EC2_KEY" > key.pem
+          chmod 600 key.pem
+
+          JAR=$(find artifact/$SERVICE -maxdepth 1 -name "*.jar" | head -n 1)
+
+          # Create service directory if missing
+          ssh -i key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST \
+            "sudo mkdir -p /opt/$SERVICE && sudo chown -R $EC2_USER:$EC2_USER /opt/$SERVICE"
+
+          # Copy JAR to EC2
+          scp -i key.pem -o StrictHostKeyChecking=no "$JAR" \
+            $EC2_USER@$EC2_HOST:/opt/$SERVICE/$SERVICE.jar
+
+          # Inject environment and restart service
+          ssh -i key.pem -o StrictHostKeyChecking=no $EC2_USER@$EC2_HOST << EOF
+          set -e
+          echo "KAFKA_BOOTSTRAP_SERVERS=$KAFKA_BOOTSTRAP_SERVERS" > /opt/$SERVICE/.env
+          echo "DB_URL=$DB_URL" >> /opt/$SERVICE/.env
+          echo "DB_USERNAME=$DB_USERNAME" >> /opt/$SERVICE/.env
+          echo "DB_PASSWORD=$DB_PASSWORD" >> /opt/$SERVICE/.env
+
+          # Create systemd service if missing
+          if [ ! -f /etc/systemd/system/$SERVICE.service ]; then
+            sudo tee /etc/systemd/system/$SERVICE.service > /dev/null << EOL
+          [Unit]
+          Description=$SERVICE
+          After=network.target
+
+          [Service]
+          User=$EC2_USER
+          WorkingDirectory=/opt/$SERVICE
+          EnvironmentFile=/opt/$SERVICE/.env
+          ExecStart=/usr/bin/java -Xms128m -Xmx256m -jar /opt/$SERVICE/$SERVICE.jar
+          Restart=always
+          SuccessExitStatus=143
+
+          [Install]
+          WantedBy=multi-user.target
+          EOL
+                      sudo systemctl daemon-reload
+                      sudo systemctl enable $SERVICE
+                    fi
+
+                    sudo systemctl restart $SERVICE
+                    sudo systemctl status $SERVICE --no-pager
+          EOF
+
+                    rm -f key.pem
