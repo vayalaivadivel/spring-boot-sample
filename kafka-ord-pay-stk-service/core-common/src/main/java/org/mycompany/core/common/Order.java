@@ -1,15 +1,5 @@
 package org.mycompany.core.common;
 
-/**
- *  Represents an order in the system. This record is immutable and can be used to transfer order data across different layers of the application.
- * @param id
- * @param customerId
- * @param productId
- * @param productCount
- * @param price
- * @param status
- * @param source
- */
 public record Order(
         Long id,
         Long customerId,
